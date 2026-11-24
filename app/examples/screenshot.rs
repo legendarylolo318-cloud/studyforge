@@ -135,6 +135,23 @@ fn demo_blocking(st: &AppState) {
     st.set_edit_processes("discord\ntelegram-desktop\nslack".into());
     st.set_edit_mode(1);
     st.set_edit_preset(true);
+    st.set_schedules(model(vec![
+        ScheduleItem { id: 1, name: "Social Media".into(), days: "Mon–Fri".into(), time: "09:00–17:00".into(), lists: "Social Media".into(), enabled: true },
+        ScheduleItem { id: 2, name: "Gaming".into(), days: "Every day".into(), time: "22:00–02:00".into(), lists: "Gaming".into(), enabled: false },
+    ]));
+    st.set_list_names(model(vec!["Gaming".into(), "News".into(), "Social Media".into()]));
+    st.set_data_dir("/home/me/Sync/StudyForge  (custom)".into());
+    st.set_dnd_status("Not supported on this desktop (only GNOME and KDE are handled).".into());
+    if std::env::var("HARD").is_ok() {
+        st.set_hard_active(true);
+        st.set_hard_until("15:42".into());
+        st.set_hard_left("23:10".into());
+        st.set_hard_challenge_enabled(true);
+        st.set_hard_challenge("k7Qm2xNpTr9vBzHw4cYfJd6sGaLe8uRtXn3VhWq5MbPzCjDk".into());
+        st.set_hard_cooldown("".into());
+        st.set_hard_emergency("".into());
+        st.set_helper_connected(true);
+    }
     st.set_helper_install_note("Install: run `sudo ./packaging/linux/install.sh` from the StudyForge folder.".into());
 }
 

@@ -1,4 +1,4 @@
-import { ComboBox, LineEdit, TextEdit, Slider, Switch, ScrollView, CheckBox } from "std-widgets.slint";
+import { ComboBox, LineEdit, TextEdit, Slider, Switch, ScrollView, CheckBox, SpinBox } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
 import { Card, Dim, PrimaryButton, GhostButton, Ring } from "components.slint";
@@ -28,6 +28,64 @@ component OutcomePanel inherits Rectangle {
             }
         }
     }
+}
+
+// A text input that refuses pasted text (hard-mode early-exit challenge must be typed).
+component NoPasteInput inherits FocusScope {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder-text <=> input.placeholder-text;
+    callback accepted(string);
+    property <int> last-len: 0;
+    capture-key-pressed(e) => {
+        if ((e.modifiers.control || e.modifiers.meta) && (e.text == "v" || e.text == "V" || e.text == "\u{16}")) { return accept; }
+        if (e.modifiers.shift && e.text == "\u{f727}") { return accept; }
+        reject
+    }
+    input := LineEdit {
+        width: root.width;
+        font-size: 13px;
+        edited(t) => {
+            // A jump of more than a couple of characters at once is a paste (context menu / middle click).
+            if (t.character-count > root.last-len + 2) { self.text = ""; root.last-len = 0; }
+            else { root.last-len = t.character-count; }
+        }
+        accepted(t) => { root.accepted(t); }
+    }
+}
+
+component HardPanel inherits VerticalLayout {
+    spacing: 8px;
+    padding: 16px;
+    alignment: start;
+    Text { text: "🔒 Locked in"; font-size: 18px; font-weight: 700; color: Theme.warn; }
+    Text { text: "Ends at " + AppState.hard-until + " (" + AppState.hard-left + " left). Blocking cannot be lifted from this window."; color: Theme.text; wrap: word-wrap; font-size: 13px; }
+    Rectangle { height: 1px; background: Theme.border; }
+    if AppState.hard-challenge-enabled: VerticalLayout {
+        spacing: 6px;
+        Dim { text: "Early exit: type this text exactly (pasting is disabled):"; }
+        Rectangle {
+            background: Theme.surface-hi; border-radius: 6px; height: 54px;
+            Text { text: AppState.hard-challenge; font-family: "monospace"; font-size: 13px; color: Theme.text; wrap: word-wrap; x: 8px; width: parent.width - 16px; vertical-alignment: center; }
+        }
+        typed := NoPasteInput { height: 36px; placeholder-text: "type it here"; accepted(t) => { AppState.hard-challenge-submit(t); } }
+        GhostButton { text: "End session"; clicked => { AppState.hard-challenge-submit(typed.text); typed.text = ""; } }
+    }
+    Rectangle { height: 1px; background: Theme.border; }
+    Dim { text: "Or wait " + AppState.hard-cooldown-mins + " minutes:"; }
+    HorizontalLayout {
+        spacing: 8px;
+        GhostButton { text: AppState.hard-cooldown == "" ? "Start cooldown" : "Cancel cooldown"; clicked => { AppState.hard-cooldown-request(AppState.hard-cooldown == ""); } }
+        Text { text: AppState.hard-cooldown; color: Theme.text; vertical-alignment: center; }
+    }
+    Rectangle { height: 1px; background: Theme.border; }
+    Dim { text: "Emergency unlock — always works after " + AppState.hard-emergency-mins + " minutes, whatever else is set:"; }
+    HorizontalLayout {
+        spacing: 8px;
+        GhostButton { text: AppState.hard-emergency == "" ? "Request emergency unlock" : "Cancel request"; clicked => { AppState.hard-emergency-request(AppState.hard-emergency == ""); } }
+        Text { text: AppState.hard-emergency; color: Theme.text; vertical-alignment: center; }
+    }
+    if AppState.hard-error != "": Text { text: AppState.hard-error; color: Theme.danger; wrap: word-wrap; font-size: 12px; }
+    Dim { text: "On the machine itself an administrator can always run `studyd emergency-unlock`."; }
 }
 
 component SoundDrawer inherits Card {
@@ -109,19 +167,21 @@ export component FocusPage inherits Rectangle {
                 }
                 HorizontalLayout {
                     alignment: center; spacing: 10px;
-                    if !AppState.timer-active: PrimaryButton { text: "Start"; clicked => { AppState.start-session(AppState.timer-mode, AppState.focus-subject, goal.text); } }
+                    if !AppState.timer-active: PrimaryButton { text: "Start"; clicked => { AppState.start-session(AppState.timer-mode, AppState.focus-subject, AppState.focus-goal, AppState.hard-on, AppState.hard-mins); } }
                     if AppState.timer-active: PrimaryButton {
                         text: AppState.timer-awaiting ? "Start next" : (AppState.timer-running ? "Pause" : "Resume");
                         clicked => { AppState.toggle-pause(); }
                     }
                     if AppState.timer-active && AppState.timer-mode == 0: GhostButton { text: "Skip"; clicked => { AppState.skip-phase(); } }
-                    if AppState.timer-active: GhostButton { text: "Stop"; clicked => { AppState.stop-session(); } }
+                    if AppState.timer-active && !AppState.hard-active: GhostButton { text: "Stop"; clicked => { AppState.stop-session(); } }
+                    if AppState.timer-active && AppState.hard-active: GhostButton { text: "🔒 Locked until " + AppState.hard-until; enabled: false; }
                 }
             }
         }
         Card {
-            width: 320px;
-            VerticalLayout {
+            width: 340px;
+            if AppState.hard-active: HardPanel { x: 0; width: parent.width; }
+            if !AppState.hard-active: VerticalLayout {
                 padding: 18px; spacing: 10px;
                 Text { text: "Session"; font-size: 16px; font-weight: 700; color: Theme.text; }
                 Dim { text: "Subject"; }
@@ -132,7 +192,7 @@ export component FocusPage inherits Rectangle {
                     selected(v) => { AppState.focus-subject = self.current-index; }
                 }
                 Dim { text: "Goal for this session"; }
-                goal := LineEdit { placeholder-text: "e.g. finish chapter 4 exercises"; enabled: !AppState.timer-active; }
+                LineEdit { text <=> AppState.focus-goal; placeholder-text: "e.g. finish chapter 4 exercises"; enabled: !AppState.timer-active; }
                 Dim { text: "Block during this session"; }
                 for l in AppState.blocklists : HorizontalLayout {
                     spacing: 6px; height: 28px;
@@ -141,6 +201,17 @@ export component FocusPage inherits Rectangle {
                     Text { text: l.mode == 0 ? "hard" : "gentle"; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; }
                 }
                 if !AppState.helper-connected: Dim { text: "Blocking helper not installed — blocking is off."; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Switch { checked: AppState.hard-on; enabled: !AppState.timer-active; toggled => { AppState.hard-on = self.checked; } }
+                    Text { text: "Hard mode (lock in)"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                }
+                if AppState.hard-on: HorizontalLayout {
+                    spacing: 8px;
+                    Dim { text: "Locked for (min)"; vertical-alignment: center; }
+                    SpinBox { minimum: 5; maximum: 1440; value: AppState.hard-mins; enabled: !AppState.timer-active; edited(v) => { AppState.hard-mins = v; } }
+                }
+                if AppState.hard-on: Dim { text: "Once started, blocking can't be lifted from the app until the time is up (or via the early-exit options)."; }
                 if AppState.flash != "": Text { text: AppState.flash; color: Theme.warn; wrap: word-wrap; font-size: 12px; }
                 Rectangle { vertical-stretch: 1; }
                 GhostButton { text: root.drawer ? "Hide sound mixer" : "Sound mixer ♪"; selected: root.drawer; clicked => { root.drawer = !root.drawer; } }

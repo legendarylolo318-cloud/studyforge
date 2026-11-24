@@ -163,6 +163,47 @@ export component SettingsPage inherits ScrollView {
                 SwitchRow { label: "Block the Steam client too (otherwise only Steam games are closed, never steam / steamwebhelper)"; key: "block_steam_client"; value: AppState.settings.block-steam-client; }
             }
         }
+        Section {
+            height: 330px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Hard mode"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                SwitchRow { label: "Early-exit challenge (type a long random text to end a locked session)"; key: "early_exit_challenge"; value: AppState.settings.early-exit-challenge; }
+                SpinRow { label: "Early-exit cooldown (minutes)"; key: "hard_mode_cooldown_mins"; value: AppState.settings.hard-mode-cooldown-mins; max: 600; }
+                SpinRow { label: "Emergency unlock cooldown (minutes, minimum 10)"; key: "emergency_cooldown_mins"; value: AppState.settings.emergency-cooldown-mins; min: 10; max: 1440; }
+                Dim { text: "The emergency unlock always works once its cooldown has passed. Administrators can also run `sudo studyd emergency-unlock` (Linux) or `studyd.exe emergency-unlock` from an admin terminal (Windows)."; }
+            }
+        }
+
+        Section {
+            height: 340px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Desktop"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                SwitchRow { label: "Start StudyForge when I log in"; key: "autostart"; value: AppState.settings.autostart; }
+                SwitchRow { label: "Do Not Disturb during focus phases"; key: "dnd_during_work"; value: AppState.settings.dnd-during-work; }
+                Dim { text: AppState.dnd-status; }
+                SwitchRow { label: "Daily automatic backup (keeps the last 7)"; key: "backup_daily"; value: AppState.settings.backup-daily; }
+                HorizontalLayout { spacing: 8px; GhostButton { text: "Back up now"; clicked => { AppState.backup-now(); } } }
+            }
+        }
+
+        Section {
+            height: 240px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Data folder (basic folder sync)"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                Text { text: AppState.data-dir; color: Theme.text; wrap: word-wrap; font-size: 13px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    GhostButton { text: "Choose folder…"; clicked => { AppState.choose-data-dir(); } }
+                    GhostButton { text: "Reset to default"; clicked => { AppState.reset-data-dir(); } }
+                    GhostButton { text: "Open"; clicked => { AppState.open-data-dir(); } }
+                }
+                Dim { text: "Point this at a Syncthing / Dropbox folder to share your data between computers. A lock file stops two computers opening the database at the same time. This is not a merge: use one computer at a time. Takes effect after a restart."; }
+                if AppState.data-note != "": Text { text: AppState.data-note; color: Theme.ok; wrap: word-wrap; font-size: 12px; }
+            }
+        }
         Rectangle { height: 20px; }
     }
 }

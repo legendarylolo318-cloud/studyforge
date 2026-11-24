@@ -5,6 +5,7 @@ use crate::audio::{self, Audio, AudioCmd, TrackInfo};
 mod blocking;
 mod cards;
 mod data;
+mod system;
 
 use crate::sys::tray::{Tray, TrayState};
 use crate::{AppState, AppWindow, SettingsData, SubjectItem, TipItem, TrackItem};
@@ -21,11 +22,12 @@ use studyforge_core::settings::{Settings, ThemeMode};
 use studyforge_core::srs::{Scheduler, Sm2};
 use crate::daemon_link::DaemonLink;
 use crate::OverlayWindow;
+use crate::sys::dnd::{self, Dnd};
 use studyforge_core::ipc::{DaemonEvent, DaemonStatus, Response};
 use studyforge_core::timer::{fmt_clock, Mode, Phase, Stamp, Timer, TimerConfig, TimerEvent};
 
 pub enum Cmd {
-    Start { mode: i32, subject_idx: i32, goal: String },
+    Start { mode: i32, subject_idx: i32, goal: String, hard: bool, hard_mins: i32 },
     TogglePause,
     Skip,
     Stop,
@@ -36,6 +38,16 @@ pub enum Cmd {
     AddTip(String),
     DeleteTip(i64),
     PageChanged(i32),
+    AddSchedule { list_idx: i32, days: i32, start: String, end: String },
+    ToggleSchedule(i64, bool),
+    DeleteSchedule(i64),
+    HardChallenge(String),
+    HardCooldown(bool),
+    HardEmergency(bool),
+    ChooseDataDir,
+    SetDataDir(Option<PathBuf>),
+    OpenDataDir,
+    BackupNow,
     ToggleListSelected(i64, bool),
     SetListMode(i64, i32),
     EditList(i64),
@@ -125,6 +137,10 @@ pub struct Backend {
     overlay: blocking::OverlayQueue,
     overlay_win: Weak<OverlayWindow>,
     blocking_session: bool,
+    dnd: Box<dyn Dnd>,
+    data_dir: PathBuf,
+    last_backup_check: Instant,
+    hard_was_active: bool,
     sched: Box<dyn Scheduler>,
     review: Option<cards::ReviewSession>,
     import: Option<cards::ImportDraft>,
@@ -250,6 +266,10 @@ impl Backend {
             overlay: Default::default(),
             overlay_win,
             blocking_session: false,
+            dnd: dnd::detect(),
+            data_dir: data_dir.clone(),
+            last_backup_check: Instant::now(),
+            hard_was_active: false,
             sched: Box::new(Sm2),
             review: None,
             import: None,
@@ -267,6 +287,11 @@ impl Backend {
         b.load_selection();
         b.reload_blocklists();
         b.push_blocklists();
+        b.init_dnd();
+        b.sync_autostart();
+        b.push_data_dir();
+        b.push_schedules_ui();
+        b.run_daily_backup();
         b.refresh_helper_ui();
         b.refresh_for_page();
         b
@@ -306,6 +331,8 @@ impl Backend {
             // Quitting the app ends a normal (non-hard) block; a hard lock survives by design.
             let _ = crate::daemon_link::request(&blocking::endpoint(), &studyforge_core::ipc::Request::StopSession);
         }
+        self.dnd_restore();
+        let _ = self.db.checkpoint();
         self.link.shutdown();
         self.audio.send(AudioCmd::Quit);
         if self.timer.is_active() {
@@ -319,10 +346,20 @@ impl Backend {
     // ------------------------------------------------------------------
     fn handle(&mut self, cmd: Cmd) {
         match cmd {
-            Cmd::Start { mode, subject_idx, goal } => self.start(mode, subject_idx, goal),
+            Cmd::Start { mode, subject_idx, goal, hard, hard_mins } => self.start(mode, subject_idx, goal, hard, hard_mins),
+            Cmd::AddSchedule { list_idx, days, start, end } => self.add_schedule(list_idx, days, start, end),
+            Cmd::ToggleSchedule(id, on) => self.toggle_schedule(id, on),
+            Cmd::DeleteSchedule(id) => self.delete_schedule(id),
+            Cmd::HardChallenge(t) => self.hard_request(studyforge_core::ipc::Request::ExitChallenge { typed: t }, "hard"),
+            Cmd::HardCooldown(start) => self.hard_request(studyforge_core::ipc::Request::ExitCooldown { start }, "hard"),
+            Cmd::HardEmergency(start) => self.hard_request(studyforge_core::ipc::Request::Emergency { start }, "hard"),
+            Cmd::ChooseDataDir => self.choose_data_dir(),
+            Cmd::SetDataDir(p) => self.set_data_dir(p),
+            Cmd::OpenDataDir => open_folder(&self.data_dir.clone()),
+            Cmd::BackupNow => self.backup_now(),
             Cmd::TogglePause => {
                 if !self.timer.is_active() {
-                    self.start(0, 0, String::new());
+                    self.start(0, 0, String::new(), false, 0);
                 } else {
                     let ev = self.timer.toggle(stamp());
                     self.handle_events(ev);
@@ -467,9 +504,19 @@ impl Backend {
         });
     }
 
-    fn start(&mut self, mode: i32, subject_idx: i32, goal: String) {
+    fn start(&mut self, mode: i32, subject_idx: i32, goal: String, hard: bool, hard_mins: i32) {
         if self.timer.is_active() {
             return;
+        }
+        if hard {
+            if !self.daemon.connected {
+                self.flash("Hard mode needs the blocking helper, which isn't running. Install it from the Blocking page.");
+                return;
+            }
+            if self.selected_lists.is_empty() && !self.settings.allowlist_mode {
+                self.flash("Hard mode locks in your blocking: tick at least one block list first.");
+                return;
+            }
         }
         let kind = if mode == 1 { SessionKind::Flow } else { SessionKind::Pomodoro };
         let subject = if subject_idx > 0 { self.subjects.get(subject_idx as usize - 1).map(|s| s.id) } else { None };
@@ -481,7 +528,7 @@ impl Backend {
         self.session_goal = goal.trim().to_string();
         let ev = self.timer.start(if mode == 1 { Mode::Flow } else { Mode::Pomodoro }, now);
         self.last_progress_save = Instant::now();
-        self.begin_blocking(&goal);
+        self.begin_blocking(&goal, hard.then_some(hard_mins));
         self.handle_events(ev);
     }
 
@@ -524,6 +571,9 @@ impl Backend {
         }
         self.push_timer();
         self.tick_notes();
+        if self.last_backup_check.elapsed() > Duration::from_secs(3600) {
+            self.run_daily_backup();
+        }
         if self.last_refresh.elapsed() > Duration::from_secs(30) && matches!(self.page, 0 | 6) {
             self.refresh_for_page();
         }
@@ -544,6 +594,11 @@ impl Backend {
                     }
                 }
                 TimerEvent::PhaseStarted(p) => {
+                    if p.is_focus() {
+                        self.dnd_enable();
+                    } else {
+                        self.dnd_restore();
+                    }
                     if self.settings.sound_during_work {
                         self.set_sounds_playing(p.is_focus());
                     }
@@ -552,6 +607,7 @@ impl Backend {
                     }
                 }
                 TimerEvent::Stopped => {
+                    self.dnd_restore();
                     if self.settings.sound_during_work {
                         self.set_sounds_playing(false);
                     }
@@ -700,6 +756,17 @@ impl Backend {
     fn after_settings_change(&mut self, old: &Settings) {
         self.timer.set_config(timer_cfg(&self.settings));
         self.audio.send(AudioCmd::Master(self.settings.master_volume));
+        if old.autostart != self.settings.autostart {
+            if let Err(e) = crate::sys::autostart::set(self.settings.autostart) {
+                self.flash(&format!("Could not change autostart: {e}"));
+            }
+        }
+        if old.dnd_during_work && !self.settings.dnd_during_work {
+            self.dnd_restore();
+        }
+        if old.browser_policies != self.settings.browser_policies || old.block_steam_client != self.settings.block_steam_client {
+            self.push_schedules_to_daemon();
+        }
         if old.hotkey != self.settings.hotkey {
             (self.hotkey_rebind)(self.settings.hotkey.clone());
         }
@@ -943,8 +1010,48 @@ pub fn wire_callbacks(ui: &AppWindow, tx: &Sender<Cmd>) {
         let _ = t.send(Cmd::RescanSounds);
     });
     let t = tx.clone();
-    st.on_start_session(move |mode, subj, goal| {
-        let _ = t.send(Cmd::Start { mode, subject_idx: subj, goal: goal.to_string() });
+    st.on_start_session(move |mode, subj, goal, hard, mins| {
+        let _ = t.send(Cmd::Start { mode, subject_idx: subj, goal: goal.to_string(), hard, hard_mins: mins });
+    });
+    let t = tx.clone();
+    st.on_add_schedule(move |l, d, s, e| {
+        let _ = t.send(Cmd::AddSchedule { list_idx: l, days: d, start: s.to_string(), end: e.to_string() });
+    });
+    let t = tx.clone();
+    st.on_toggle_schedule(move |id, on| {
+        let _ = t.send(Cmd::ToggleSchedule(id as i64, on));
+    });
+    let t = tx.clone();
+    st.on_delete_schedule(move |id| {
+        let _ = t.send(Cmd::DeleteSchedule(id as i64));
+    });
+    let t = tx.clone();
+    st.on_hard_challenge_submit(move |s| {
+        let _ = t.send(Cmd::HardChallenge(s.to_string()));
+    });
+    let t = tx.clone();
+    st.on_hard_cooldown_request(move |b| {
+        let _ = t.send(Cmd::HardCooldown(b));
+    });
+    let t = tx.clone();
+    st.on_hard_emergency_request(move |b| {
+        let _ = t.send(Cmd::HardEmergency(b));
+    });
+    let t = tx.clone();
+    st.on_choose_data_dir(move || {
+        let _ = t.send(Cmd::ChooseDataDir);
+    });
+    let t = tx.clone();
+    st.on_reset_data_dir(move || {
+        let _ = t.send(Cmd::SetDataDir(None));
+    });
+    let t = tx.clone();
+    st.on_open_data_dir(move || {
+        let _ = t.send(Cmd::OpenDataDir);
+    });
+    let t = tx.clone();
+    st.on_backup_now(move || {
+        let _ = t.send(Cmd::BackupNow);
     });
     let t = tx.clone();
     st.on_toggle_pause(move || {

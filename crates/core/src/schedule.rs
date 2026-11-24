@@ -52,6 +52,51 @@ impl ScheduleRule {
     }
 }
 
+/// A schedule as the GUI stores it (references lists by id so that editing a
+/// list updates the schedule). [`resolve_defs`] turns these into rules for studyd.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScheduleDef {
+    pub id: i64,
+    pub enabled: bool,
+    pub days: u8,
+    pub start_min: u16,
+    pub end_min: u16,
+    pub list_ids: Vec<i64>,
+}
+
+impl ScheduleDef {
+    pub fn list_names(&self, lists: &[crate::models::Blocklist]) -> String {
+        let names: Vec<&str> = self.list_ids.iter().filter_map(|id| lists.iter().find(|l| l.id == *id)).map(|l| l.name.as_str()).collect();
+        if names.is_empty() {
+            "(deleted list)".into()
+        } else {
+            names.join(", ")
+        }
+    }
+    pub fn time_text(&self) -> String {
+        format!("{}–{}", fmt_hhmm(self.start_min), fmt_hhmm(self.end_min))
+    }
+}
+
+pub fn resolve_defs(defs: &[ScheduleDef], lists: &[crate::models::Blocklist], browser_policies: bool, block_steam_client: bool) -> Vec<ScheduleRule> {
+    defs.iter()
+        .map(|d| {
+            let chosen: Vec<crate::blocking::BlockList> =
+                lists.iter().filter(|l| d.list_ids.contains(&l.id)).map(crate::blocking::BlockList::from).collect();
+            ScheduleRule {
+                id: d.id,
+                name: format!("{} · {} {}", d.list_names(lists), fmt_days(d.days), d.time_text()),
+                // a schedule whose lists were all deleted must not run as an empty block
+                enabled: d.enabled && !chosen.is_empty(),
+                days: d.days,
+                start_min: d.start_min,
+                end_min: d.end_min,
+                spec: BlockSpec { lists: chosen, allowlist: Default::default(), block_steam_client, browser_policies },
+            }
+        })
+        .collect()
+}
+
 pub fn active_rules<'a, Tz: TimeZone>(rules: &'a [ScheduleRule], now: &DateTime<Tz>) -> Vec<&'a ScheduleRule> {
     rules.iter().filter(|r| r.is_active(now)).collect()
 }
@@ -190,6 +235,25 @@ mod tests {
         assert!(!r2.is_active(&tz.with_ymd_and_hms(2025, 10, 26, 2, 30, 0).earliest().unwrap()));
         // second 02:29 (after fall back) is evaluated again on the wall clock -> active again
         assert!(r2.is_active(&tz.with_ymd_and_hms(2025, 10, 26, 2, 29, 0).latest().unwrap()));
+    }
+
+    #[test]
+    fn defs_resolve_against_current_lists() {
+        use crate::models::{Blocklist, EnforceMode};
+        let lists = vec![Blocklist { id: 3, name: "Social".into(), preset_key: None, domains: vec!["a.com".into()], processes: vec!["x".into()], steam_games: false, mode: EnforceMode::Gentle }];
+        let def = ScheduleDef { id: 1, enabled: true, days: WEEKDAYS, start_min: 540, end_min: 1020, list_ids: vec![3] };
+        let rules = resolve_defs(&[def.clone()], &lists, true, false);
+        assert_eq!(rules[0].name, "Social · Mon–Fri 09:00–17:00");
+        assert!(rules[0].enabled && rules[0].spec.browser_policies);
+        assert_eq!(rules[0].spec.lists[0].mode, EnforceMode::Gentle);
+        // editing the list is reflected
+        let mut lists2 = lists.clone();
+        lists2[0].domains.push("b.com".into());
+        assert_eq!(resolve_defs(&[def.clone()], &lists2, true, false)[0].spec.lists[0].domains.len(), 2);
+        // deleted list -> rule disabled instead of silently blocking nothing / everything
+        let none = resolve_defs(&[def], &[], true, false);
+        assert!(!none[0].enabled);
+        assert!(none[0].name.contains("deleted"));
     }
 
     #[test]

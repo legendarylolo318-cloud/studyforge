@@ -24,6 +24,7 @@ export global AppState {
     in-out property <[SubjectItem]> subjects;
     in-out property <[string]> subject-names: ["No subject"]; // index 0 = none
     in-out property <int> focus-subject: 0;
+    in-out property <string> focus-goal;
 
     // ----- outcome prompt (after a session) -----
     in-out property <bool> outcome-open: false;
@@ -151,6 +152,40 @@ export global AppState {
     callback delete-list(int);
     callback install-helper();
 
+    // ----- schedules -----
+    in-out property <[ScheduleItem]> schedules;
+    in-out property <[string]> list-names;
+    in-out property <string> schedule-error;
+    callback add-schedule(int /*list idx*/, int /*days mask*/, string, string);
+    callback toggle-schedule(int, bool);
+    callback delete-schedule(int);
+
+    // ----- hard mode -----
+    in-out property <bool> hard-on: false;
+    in-out property <int> hard-mins: 50;
+    in-out property <bool> hard-active: false;
+    in-out property <string> hard-until;
+    in-out property <string> hard-left;
+    in-out property <bool> hard-challenge-enabled: false;
+    in-out property <string> hard-challenge;
+    in-out property <string> hard-cooldown;
+    in-out property <string> hard-emergency;
+    in-out property <int> hard-cooldown-mins: 20;
+    in-out property <int> hard-emergency-mins: 60;
+    in-out property <string> hard-error;
+    callback hard-challenge-submit(string);
+    callback hard-cooldown-request(bool);
+    callback hard-emergency-request(bool);
+
+    // ----- system -----
+    in-out property <string> dnd-status;
+    in-out property <string> data-dir;
+    in-out property <string> data-note;
+    callback choose-data-dir();
+    callback reset-data-dir();
+    callback open-data-dir();
+    callback backup-now();
+
     // ----- overlay / misc -----
     in-out property <string> flash;
 
@@ -167,7 +202,7 @@ export global AppState {
     in-out property <[DistractionRow]> stats-distractions;
 
     // ----- timer callbacks -----
-    callback start-session(int /*mode*/, int /*subject idx*/, string /*goal*/);
+    callback start-session(int /*mode*/, int /*subject idx*/, string /*goal*/, bool /*hard*/, int /*hard minutes*/);
     callback toggle-pause();
     callback skip-phase();
     callback stop-session();

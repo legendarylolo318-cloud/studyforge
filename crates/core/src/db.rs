@@ -114,6 +114,13 @@ impl Db {
         &self.conn
     }
 
+    /// Fold the WAL into the main file (call before the app exits so a synced
+    /// data folder holds a single consistent file).
+    pub fn checkpoint(&self) -> Result<()> {
+        let _: (i64, i64, i64) = self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(())
+    }
+
     pub fn schema_version(&self) -> Result<i64> {
         Ok(self.conn.query_row("PRAGMA user_version", [], |r| r.get(0))?)
     }
@@ -171,6 +178,11 @@ impl Db {
             "INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=?2",
             params![key, value],
         )?;
+        Ok(())
+    }
+
+    pub fn del_kv(&self, key: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM settings WHERE key=?", [key])?;
         Ok(())
     }
 
@@ -578,6 +590,10 @@ impl Db {
     pub fn add_schedule_json(&self, json: &str) -> Result<Id> {
         self.conn.execute("INSERT INTO schedules(json) VALUES(?)", [json])?;
         Ok(self.conn.last_insert_rowid())
+    }
+    pub fn update_schedule_json(&self, id: Id, json: &str) -> Result<()> {
+        self.conn.execute("UPDATE schedules SET json=?1 WHERE id=?2", params![json, id])?;
+        Ok(())
     }
     pub fn delete_schedule(&self, id: Id) -> Result<()> {
         self.conn.execute("DELETE FROM schedules WHERE id=?", [id])?;

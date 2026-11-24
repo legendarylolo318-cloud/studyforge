@@ -52,7 +52,13 @@ impl Backend {
                 editing: Some(b.id) == self.edit_list,
             })
             .collect();
-        let _ = self.ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_blocklists(ModelRc::new(VecModel::from(items))));
+        let names: Vec<SharedString> = self.blocklists.iter().map(|b| SharedString::from(b.name.as_str())).collect();
+        let _ = self.ui.upgrade_in_event_loop(move |ui| {
+            let st = ui.global::<AppState>();
+            st.set_blocklists(ModelRc::new(VecModel::from(items)));
+            st.set_list_names(ModelRc::new(VecModel::from(names)));
+        });
+        self.push_schedules_ui();
     }
 
     fn persist_selection(&self) {
@@ -79,6 +85,7 @@ impl Backend {
         let _ = self.db.set_blocklist_mode(id, m);
         self.reload_blocklists();
         self.push_blocklists();
+        self.push_schedules_to_daemon();
     }
 
     pub(super) fn edit_list(&mut self, id: Id) {
@@ -146,6 +153,7 @@ impl Backend {
         }
         self.reload_blocklists();
         self.edit_list(id);
+        self.push_schedules_to_daemon();
         if !rejected.is_empty() {
             let msg = format!("Saved. Ignored (not valid domain names; IP addresses are never blocked): {}", rejected.join(", "));
             let _ = self.ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_edit_error(msg.into()));
@@ -168,6 +176,7 @@ impl Backend {
             self.reload_blocklists();
             self.persist_selection();
             self.push_blocklists();
+            self.push_schedules_to_daemon();
         }
     }
 
@@ -188,7 +197,7 @@ impl Backend {
     }
 
     // ------------------------------------------------------------ session hooks
-    pub(super) fn begin_blocking(&mut self, goal: &str) {
+    pub(super) fn begin_blocking(&mut self, goal: &str, hard_mins: Option<i32>) {
         self.blocking_session = false;
         if self.selected_lists.is_empty() && !self.settings.allowlist_mode {
             return;
@@ -198,7 +207,8 @@ impl Backend {
             return;
         }
         let spec = self.build_spec(&self.selected_lists.clone());
-        self.link.send(Request::StartSession(StartSession { goal: goal.to_string(), spec, hard: None }), "start");
+        let hard = hard_mins.map(|m| self.hard_config(m));
+        self.link.send(Request::StartSession(StartSession { goal: goal.to_string(), spec, hard }), "start");
         self.blocking_session = true;
     }
 
@@ -233,9 +243,12 @@ impl Backend {
             }
         }
         self.refresh_helper_ui();
+        self.push_hard();
     }
 
-    pub(super) fn on_helper_connected(&mut self) {}
+    pub(super) fn on_helper_connected(&mut self) {
+        self.push_schedules_to_daemon();
+    }
 
     pub(super) fn on_daemon_events(&mut self, events: Vec<DaemonEvent>) {
         for e in events {
@@ -256,8 +269,13 @@ impl Backend {
         match result {
             Ok(Response::Error { message }) => {
                 tracing::warn!("helper refused {tag}: {message}");
-                self.flash(&message);
+                if tag == "hard" {
+                    self.set_hard_error(message);
+                } else {
+                    self.flash(&message);
+                }
             }
+            Ok(Response::Ok) if tag == "hard" => self.set_hard_error(String::new()),
             Err(e) => tracing::warn!("helper request {tag} failed: {e}"),
             Ok(_) => {}
         }
@@ -391,7 +409,7 @@ fn try_install_helper() -> String {
         candidates.push("/usr/share/studyforge/install.sh".into());
         candidates.push("packaging/linux/install.sh".into());
         // SAFETY: getuid cannot fail
-        let uid = unsafe { libc_getuid() };
+        let uid = unsafe { libc::getuid() };
         match candidates.into_iter().find(|p| p.exists()) {
             Some(script) => match std::process::Command::new("pkexec").arg("sh").arg(&script).arg(uid.to_string()).spawn() {
                 Ok(_) => "Approve the authentication prompt to install the helper. This page updates when it is running.".into(),
@@ -400,12 +418,4 @@ fn try_install_helper() -> String {
             None => install_note(),
         }
     }
-}
-
-#[cfg(not(windows))]
-unsafe fn libc_getuid() -> u32 {
-    extern "C" {
-        fn getuid() -> u32;
-    }
-    getuid()
 }

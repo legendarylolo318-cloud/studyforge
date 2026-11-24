@@ -28,6 +28,9 @@ fn bootstrap_file() -> PathBuf {
 
 /// The data directory in use: a user-chosen one if set, else the default.
 pub fn data_dir() -> PathBuf {
+    if let Some(p) = std::env::var_os("STUDYFORGE_DATA_DIR").filter(|p| !p.is_empty()) {
+        return PathBuf::from(p); // portable mode / tests
+    }
     if let Ok(s) = std::fs::read_to_string(bootstrap_file()) {
         let s = s.trim();
         if !s.is_empty() {

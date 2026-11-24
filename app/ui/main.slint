@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
-import { NavItem, Heading, Dim, Card } from "components.slint";
+import { NavItem, Heading, Dim, Card, GhostButton, PrimaryButton } from "components.slint";
 import { FocusPage } from "focus.slint";
 import { SettingsPage } from "settings.slint";
 import { DashboardPage } from "dashboard.slint";
@@ -69,6 +69,32 @@ export component AppWindow inherits Window {
                     if root.page == 7: SettingsPage { }
                 }
             }
+        }
+    }
+}
+
+// Shown before anything else when another instance / computer holds the data folder.
+export component LockWindow inherits Window {
+    title: "StudyForge — data folder in use";
+    width: 560px;
+    height: 300px;
+    background: Theme.bg;
+    in property <string> message;
+    in property <bool> can-take-over;
+    callback take-over();
+    callback quit();
+    VerticalLayout {
+        padding: 24px; spacing: 14px;
+        Text { text: "⚠ Data folder is in use"; font-size: 20px; font-weight: 700; color: Theme.warn; }
+        Text { text: root.message; color: Theme.text; wrap: word-wrap; vertical-stretch: 1; font-size: 14px; }
+        Text {
+            text: root.can-take-over ? "The lock looks stale (not refreshed for a while). If you are sure the other copy is closed, you can take over." : "Close StudyForge on the other computer first (or wait a couple of minutes if it crashed), then start again. Opening one database from two places at once can corrupt it.";
+            color: Theme.text-dim; wrap: word-wrap; font-size: 12px;
+        }
+        HorizontalLayout {
+            spacing: 10px; alignment: end;
+            GhostButton { text: "Quit"; clicked => { root.quit(); } }
+            if root.can-take-over: PrimaryButton { text: "Take over"; danger: true; clicked => { root.take-over(); } }
         }
     }
 }

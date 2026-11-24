@@ -115,6 +115,40 @@ component AllowlistCard inherits Card {
     init => { al-dom.text = AppState.settings.allowlist-domains; al-proc.text = AppState.settings.allowlist-processes; }
 }
 
+component ScheduleCard inherits Card {
+    property <int> days: 31;   // Mon-Fri
+    VerticalLayout {
+        padding: 16px; spacing: 8px;
+        Text { text: "Scheduled blocking"; font-size: 16px; font-weight: 700; color: Theme.text; }
+        Dim { text: "Runs in the background helper even when this window is closed and no session is running. Times are local wall-clock; ranges may cross midnight (22:00–02:00, days refer to the day the range starts)."; }
+        for sc in AppState.schedules : HorizontalLayout {
+            spacing: 8px; height: 30px;
+            Switch { checked: sc.enabled; toggled => { AppState.toggle-schedule(sc.id, self.checked); } }
+            Text { text: sc.lists; color: Theme.text; vertical-alignment: center; width: 170px; overflow: elide; }
+            Text { text: sc.days; color: Theme.text-dim; vertical-alignment: center; width: 120px; }
+            Text { text: sc.time; color: Theme.text-dim; vertical-alignment: center; horizontal-stretch: 1; }
+            GhostButton { text: "✕"; min-width: 30px; height: 26px; clicked => { AppState.delete-schedule(sc.id); } }
+        }
+        if AppState.schedules.length == 0: Dim { text: "No schedules yet."; }
+        Rectangle { height: 1px; background: Theme.border; }
+        HorizontalLayout {
+            spacing: 6px;
+            sc-list := ComboBox { model: AppState.list-names; width: 180px; }
+            for d[i] in ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] : GhostButton {
+                text: d; min-width: 34px; selected: (root.days / Math.pow(2, i)) - 2 * Math.floor((root.days / Math.pow(2, i)) / 2) >= 1;
+                clicked => {
+                    if (self.selected) { root.days = root.days - Math.round(Math.pow(2, i)); } else { root.days = root.days + Math.round(Math.pow(2, i)); }
+                }
+            }
+            sc-start := LineEdit { text: "09:00"; width: 70px; }
+            Dim { text: "to"; vertical-alignment: center; }
+            sc-end := LineEdit { text: "17:00"; width: 70px; }
+            PrimaryButton { text: "Add"; clicked => { AppState.add-schedule(sc-list.current-index, root.days, sc-start.text, sc-end.text); } }
+        }
+        if AppState.schedule-error != "": Text { text: AppState.schedule-error; color: Theme.danger; font-size: 12px; wrap: word-wrap; }
+    }
+}
+
 component PolicyNote inherits Card {
     VerticalLayout {
         padding: 16px; spacing: 6px;
@@ -151,6 +185,7 @@ export component BlockingPage inherits ScrollView {
             if AppState.edit-list-id >= 0: ListEditor { horizontal-stretch: 1; }
             if AppState.edit-list-id < 0: Card { horizontal-stretch: 1; Text { text: "Select a list to view or edit it"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; } }
         }
+        ScheduleCard { height: 150px + AppState.schedules.length * 38px; }
         AllowlistCard { height: 330px; }
         PolicyNote { height: 190px; }
         Rectangle { height: 16px; }
