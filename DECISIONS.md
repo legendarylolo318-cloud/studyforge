@@ -65,5 +65,36 @@ Only a lock file (`hostname + pid`, refreshed every 30 s; stale after 2 min) so 
 * Per-monitor overlay placement; website-attempt logging (would need DNS/proxy interception).
 * Windows Focus Assist integration (no public API).
 
+## Review notes (hardening pass)
+
+A second review went through the safety-critical paths with tests first, then fixed what it found.
+
+### Fixed — security / lock-out relevant
+* **Windows: emergency-unlock bypass.** `%ProgramData%\StudyForge` inherited an ACL that lets ordinary users create files, so anyone could plant the `emergency-unlock` flag (ending a hard-mode lock with no cooldown) or an `allowed_users` file before install. studyd now restricts the directory to SYSTEM + Administrators at install and on every start (Linux: root-owned, no group/world write) and ignores the flag file if that fails.
+* **Hard mode vs. clock changes.** Setting the system clock back extended a lock by the jump; setting it forward ended it at once. studyd now compares the wall clock with a boot clock that counts suspend (`CLOCK_BOOTTIME` / `GetTickCount64`) and shifts the deadline and cooldowns by any detected jump; a clock that went backwards while studyd was down is corrected on start; locks are clamped to 24 h on every start. Suspend still counts as real time.
+* **IPC denial of service.** No receive timeout meant any allowed user could hold all 16 connection slots and starve the GUI; a panicking handler also leaked its slot, and a poisoned mutex would have taken down the enforcement loop. Fixed with idle/send timeouts, a drop guard and poison-tolerant locks. Client calls (GUI and CLI) time out after 5 s, so a wedged daemon cannot hang the GUI.
+* **Process protection.** The protected list was only checked against the kernel `comm` name while matching also used the exe file name and argv[0]; it now applies to every candidate name. Added `systemd-*`, portals, polkit agents, keyrings, `sudo`/`su`/`pkexec`/`ssh` and similar.
+
+### Fixed — data preservation
+* **Hosts file byte-exactness.** The file was decoded lossily and re-joined with a single line ending: ANSI comments in a Windows hosts file were corrupted, mixed line endings normalised, a missing trailing newline added after one apply/clear cycle, and the backup was lossy. The text layer now works on raw bytes, line by line, keeping each line's own terminator; duplicate and half-written sections are all removed. Randomised tests run ~9.5k generated files (BOM, non-UTF-8, mixed CRLF/LF, no trailing newline, user `0.0.0.0` lines) through apply/clear/replace sequences.
+* **Registry revert (Windows).** Reverting deleted recorded value names unconditionally and reset `DnsOverHttpsMode` even after someone else changed it; it now only removes values that still hold exactly what StudyForge wrote.
+
+### Fixed — UX / robustness / performance
+* Hide-to-tray only when a StatusNotifier host exists (GNOME without the AppIndicator extension used to hide the window with no way back).
+* KDE DND no longer panics the GUI backend if its runtime can't be created.
+* Settings / Blocking sections are content-sized (long subject or tip lists were clipped) and scrolling pages no longer stretch cards.
+* Timer UI updates are diffed and progress quantised; the worker wakes 4x/s only while a timer runs; helper polling backs off when no helper is installed; Steam detection reads each process environment once. Idle CPU ~0.35 % → ~0.2 %.
+* Audio: per-track headroom (1/√n) so several tracks don't clip; pink noise clamped.
+
+### How it was verified
+* `cargo test --workspace` (≈240 tests, incl. the property tests and the sandboxed daemon end-to-end tests), `clippy -D warnings`, `rustfmt` on Linux.
+* `cargo check` **and clippy for `x86_64-pc-windows-gnu`** locally with an upstream 1.100.0 toolchain + Windows std (bundled C sources stubbed, so Rust is fully type-checked but not linked).
+* Grepped: no DNS resolution or IP blocking anywhere (`IpAddr` is only used to *reject* IP input); no test can reach `Paths::system()` — all use temp/sandbox paths.
+* Full-page headless renders of every screen (dark and light).
+
+### Still not verified
+* Windows *runtime* behaviour (service install/uninstall, pipe ACL in practice, `icacls`, registry policies, tray) — only type-checked and linted, plus CI on `windows-latest`.
+* Live GUI interaction on a real desktop (the dev machine's screen was locked), Wayland portal hotkey, overlay always-on-top under each compositor.
+
 ## Verification status
 Linux: all unit tests, the daemon end-to-end test (real socket, process kill, sandboxed hosts/policy files), `clippy -D warnings`, `rustfmt`. UI layout verified through a headless software-renderer example. **Windows-only code could not be compiled or run during development** (no Windows target available): the service entry points, registry backend, named-pipe ACL, tray-on-main-thread and `explorer`/PowerShell helpers were reviewed against the dependency sources only; CI on `windows-latest` is the first real check.

@@ -1,2 +1,24 @@
+# build output
 /target
+# local databases / runtime data (StudyForge uses *.sqlite3; *.db kept for safety)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.lock
+!Cargo.lock
+logs/
+*.log
+# secrets / environment
+.env
+.env.*
+# editors / IDEs / OS
+.idea/
+.vscode/
+*.iml
 *.swp
+*~
+.DS_Store
+Thumbs.db

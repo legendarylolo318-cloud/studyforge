@@ -70,7 +70,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 > **Tray note (Linux):** `tray-icon` needs GTK3 and `libayatana-appindicator`. KDE and most wlroots bars
 > (waybar) show it; stock GNOME needs the *AppIndicator and KStatusNotifierItem Support* extension.
-> If no tray is available the app still works and closing the window quits.
+> If no tray host is running (StudyForge checks for one), the app still works and closing the window quits
+> instead of hiding it.
 
 ## Install the helper
 
@@ -112,7 +113,8 @@ sudo studyd emergency-unlock        # Windows: studyd.exe emergency-unlock (admi
 ```
 
 which ends the lock, removes schedules and restores the hosts file and browser policies — with the daemon
-running, stopped or wedged.
+running, stopped or wedged. Changing the system clock does not shorten or extend a lock: studyd detects clock
+jumps and keeps the remaining time; time spent asleep counts.
 
 ## How blocking works — and its limits
 
