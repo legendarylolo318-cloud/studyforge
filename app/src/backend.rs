@@ -1,8 +1,10 @@
 //! The worker thread: owns the database and the timer, never touches the UI
 //! directly. UI updates are pushed with `upgrade_in_event_loop`.
 
+use crate::audio::{self, Audio, AudioCmd, TrackInfo};
 use crate::sys::tray::{Tray, TrayState};
-use crate::{AppState, AppWindow, SettingsData, SubjectItem, TipItem};
+use crate::{AppState, AppWindow, SettingsData, SubjectItem, TipItem, TrackItem};
+use std::collections::HashMap;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +27,10 @@ pub enum Cmd {
     DeleteSubject(i64),
     AddTip(String),
     DeleteTip(i64),
+    SetTrackVolume { id: String, volume: f32 },
+    ToggleSounds,
+    OpenSoundsFolder,
+    RescanSounds,
     Shutdown,
 }
 
@@ -50,6 +56,11 @@ pub struct Backend {
     last_progress_save: Instant,
     last_tray: (TrayState, String),
     hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
+    audio: Audio,
+    tracks: Vec<TrackInfo>,
+    mix: HashMap<String, f32>,
+    sounds_dir: PathBuf,
+    sounds_playing: bool,
 }
 
 pub fn stamp() -> Stamp {
@@ -93,7 +104,7 @@ pub fn spawn(
         .name("backend".into())
         .spawn(move || match Db::open(&studyforge_core::paths::db_path(&data_dir)) {
             Ok(db) => {
-                let mut b = Backend::new(ui, db, tray, shared, hotkey_rebind);
+                let mut b = Backend::new(ui, db, tray, shared, hotkey_rebind, data_dir.clone());
                 b.run(rx);
             }
             Err(e) => {
@@ -112,6 +123,7 @@ impl Backend {
         tray: Option<Tray>,
         shared: Shared,
         hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
+        data_dir: PathBuf,
     ) -> Self {
         let settings = db.load_settings().unwrap_or_default();
         if let Ok(n) = db.close_dangling_sessions() {
@@ -120,6 +132,7 @@ impl Backend {
             }
         }
         let timer = Timer::new(timer_cfg(&settings));
+        let ui_for_audio = ui.clone();
         let mut b = Backend {
             ui,
             db,
@@ -136,7 +149,21 @@ impl Backend {
             last_progress_save: Instant::now(),
             last_tray: (TrayState::Idle, String::new()),
             hotkey_rebind,
+            audio: {
+                let w = ui_for_audio;
+                Audio::spawn(move |msg| {
+                    let _ = w.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_audio_status(msg.into()));
+                })
+            },
+            tracks: vec![],
+            mix: HashMap::new(),
+            sounds_dir: studyforge_core::paths::sounds_dir(&data_dir),
+            sounds_playing: false,
         };
+        let _ = std::fs::create_dir_all(&b.sounds_dir);
+        b.mix = b.db.get_kv("sound_mix").ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        b.audio.send(AudioCmd::Master(b.settings.master_volume));
+        b.rescan_sounds();
         b.reload_lists();
         b.push_settings();
         b.push_lists();
@@ -173,6 +200,7 @@ impl Backend {
     }
 
     fn shutdown(&mut self) {
+        self.audio.send(AudioCmd::Quit);
         if self.timer.is_active() {
             let (s, _) = self.timer.stop(stamp());
             if let Some(id) = self.session_id.take() {
@@ -236,8 +264,48 @@ impl Backend {
                 self.reload_lists();
                 self.push_lists();
             }
+            Cmd::SetTrackVolume { id, volume } => {
+                self.mix.insert(id.clone(), volume);
+                if let Ok(j) = serde_json::to_string(&self.mix) {
+                    let _ = self.db.set_kv("sound_mix", &j);
+                }
+                if let Some(t) = self.tracks.iter().find(|t| t.id == id) {
+                    self.audio.send(AudioCmd::Track { id, spec: t.spec.clone(), volume });
+                }
+                // Moving a slider up implies the user wants to hear it.
+                if volume > 0.0 && !self.sounds_playing {
+                    self.set_sounds_playing(true);
+                }
+            }
+            Cmd::ToggleSounds => self.set_sounds_playing(!self.sounds_playing),
+            Cmd::OpenSoundsFolder => {
+                let _ = std::fs::create_dir_all(&self.sounds_dir);
+                open_folder(&self.sounds_dir);
+            }
+            Cmd::RescanSounds => self.rescan_sounds(),
             Cmd::Shutdown => {}
         }
+    }
+
+    fn set_sounds_playing(&mut self, on: bool) {
+        self.sounds_playing = on;
+        self.audio.send(AudioCmd::SetPlaying(on));
+        let _ = self.ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_sounds_playing(on));
+    }
+
+    fn rescan_sounds(&mut self) {
+        self.tracks = audio::scan_tracks(&self.sounds_dir);
+        for t in &self.tracks {
+            let volume = self.mix.get(&t.id).copied().unwrap_or(0.0);
+            self.audio.send(AudioCmd::Track { id: t.id.clone(), spec: t.spec.clone(), volume });
+        }
+        let items: Vec<(String, String, f32)> =
+            self.tracks.iter().map(|t| (t.id.clone(), t.name.clone(), self.mix.get(&t.id).copied().unwrap_or(0.0))).collect();
+        let _ = self.ui.upgrade_in_event_loop(move |ui| {
+            let v: Vec<TrackItem> =
+                items.into_iter().map(|(id, name, volume)| TrackItem { id: id.into(), name: name.into(), volume }).collect();
+            ui.global::<AppState>().set_tracks(ModelRc::new(VecModel::from(v)));
+        });
     }
 
     fn start(&mut self, mode: i32, subject_idx: i32, goal: String) {
@@ -306,8 +374,23 @@ impl Backend {
                         _ => continue,
                     };
                     self.announce(title, body);
+                    if self.settings.notify_sound {
+                        self.audio.send(AudioCmd::Chime(self.settings.master_volume.max(0.3)));
+                    }
                 }
-                TimerEvent::PhaseStarted(p) if p.is_break() => self.next_tip(),
+                TimerEvent::PhaseStarted(p) => {
+                    if self.settings.sound_during_work {
+                        self.set_sounds_playing(p.is_focus());
+                    }
+                    if p.is_break() {
+                        self.next_tip();
+                    }
+                }
+                TimerEvent::Stopped => {
+                    if self.settings.sound_during_work {
+                        self.set_sounds_playing(false);
+                    }
+                }
                 TimerEvent::AwaitingStart(p) => {
                     self.announce("Next phase ready", &format!("{} is waiting — press Start next.", p.label()));
                     if p.is_break() {
@@ -447,6 +530,7 @@ impl Backend {
 
     fn after_settings_change(&mut self, old: &Settings) {
         self.timer.set_config(timer_cfg(&self.settings));
+        self.audio.send(AudioCmd::Master(self.settings.master_volume));
         if old.hotkey != self.settings.hotkey {
             (self.hotkey_rebind)(self.settings.hotkey.clone());
         }
@@ -526,8 +610,34 @@ pub fn subject_color_hex(c: slint::Color) -> String {
 #[allow(dead_code)]
 fn _assert_model_trait<T: Model>() {}
 
+pub fn open_folder(p: &std::path::Path) {
+    #[cfg(target_os = "windows")]
+    let prog = "explorer";
+    #[cfg(not(target_os = "windows"))]
+    let prog = "xdg-open";
+    if let Err(e) = std::process::Command::new(prog).arg(p).spawn() {
+        tracing::warn!("open folder: {e}");
+    }
+}
+
 pub fn wire_callbacks(ui: &AppWindow, tx: &Sender<Cmd>) {
     let st = ui.global::<AppState>();
+    let t = tx.clone();
+    st.on_set_track_volume(move |id, v| {
+        let _ = t.send(Cmd::SetTrackVolume { id: id.to_string(), volume: v });
+    });
+    let t = tx.clone();
+    st.on_toggle_sounds(move || {
+        let _ = t.send(Cmd::ToggleSounds);
+    });
+    let t = tx.clone();
+    st.on_open_sounds_folder(move || {
+        let _ = t.send(Cmd::OpenSoundsFolder);
+    });
+    let t = tx.clone();
+    st.on_rescan_sounds(move || {
+        let _ = t.send(Cmd::RescanSounds);
+    });
     let t = tx.clone();
     st.on_start_session(move |mode, subj, goal| {
         let _ = t.send(Cmd::Start { mode, subject_idx: subj, goal: goal.to_string() });

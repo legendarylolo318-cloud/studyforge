@@ -1,4 +1,4 @@
-import { SubjectItem, TipItem, SettingsData } from "structs.slint";
+import { SubjectItem, TipItem, SettingsData, TrackItem } from "structs.slint";
 
 // Shared state between Rust and the screens. Rust owns the data; the UI only
 // reads properties and invokes callbacks.
@@ -33,6 +33,15 @@ export global AppState {
     // ----- settings -----
     in-out property <SettingsData> settings;
     in-out property <[TipItem]> tips;
+
+    // ----- sounds -----
+    in-out property <[TrackItem]> tracks;
+    in-out property <bool> sounds-playing: false;
+    in-out property <string> audio-status;
+    callback set-track-volume(string, float);
+    callback toggle-sounds();
+    callback open-sounds-folder();
+    callback rescan-sounds();
 
     // ----- timer callbacks -----
     callback start-session(int /*mode*/, int /*subject idx*/, string /*goal*/);

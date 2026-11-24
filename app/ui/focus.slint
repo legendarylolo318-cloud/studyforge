@@ -1,4 +1,4 @@
-import { ComboBox, LineEdit, TextEdit } from "std-widgets.slint";
+import { ComboBox, LineEdit, TextEdit, Slider, Switch, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
 import { Card, Dim, PrimaryButton, GhostButton, Ring } from "components.slint";
@@ -30,7 +30,46 @@ component OutcomePanel inherits Rectangle {
     }
 }
 
+component SoundDrawer inherits Card {
+    VerticalLayout {
+        padding: 16px; spacing: 8px;
+        HorizontalLayout {
+            Text { text: "Ambient sounds"; font-size: 16px; font-weight: 700; color: Theme.text; horizontal-stretch: 1; }
+            GhostButton { text: AppState.sounds-playing ? "Pause" : "Play"; selected: AppState.sounds-playing; clicked => { AppState.toggle-sounds(); } }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: "Master"; color: Theme.text; vertical-alignment: center; width: 60px; }
+            Slider { minimum: 0; maximum: 1; value: AppState.settings.master-volume; changed(v) => { AppState.set-float("master_volume", v); } }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 6px;
+                for t in AppState.tracks : VerticalLayout {
+                    spacing: 2px;
+                    Text { text: t.name; color: Theme.text; font-size: 13px; overflow: elide; }
+                    Slider { minimum: 0; maximum: 1; value: t.volume; changed(v) => { AppState.set-track-volume(t.id, v); } }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            GhostButton { text: "Open sounds folder"; horizontal-stretch: 1; clicked => { AppState.open-sounds-folder(); } }
+            GhostButton { text: "Rescan"; clicked => { AppState.rescan-sounds(); } }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: "Play during focus, pause on breaks"; color: Theme.text; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+            Switch { checked: AppState.settings.sound-during-work; toggled => { AppState.set-bool("sound_during_work", self.checked); } }
+        }
+        Dim { text: AppState.audio-status; }
+    }
+}
+
 export component FocusPage inherits Rectangle {
+    property <bool> drawer: false;
     HorizontalLayout {
         spacing: 16px;
         Card {
@@ -95,8 +134,10 @@ export component FocusPage inherits Rectangle {
                 Dim { text: "Goal for this session"; }
                 goal := LineEdit { placeholder-text: "e.g. finish chapter 4 exercises"; enabled: !AppState.timer-active; }
                 Rectangle { vertical-stretch: 1; }
+                GhostButton { text: root.drawer ? "Hide sound mixer" : "Sound mixer ♪"; selected: root.drawer; clicked => { root.drawer = !root.drawer; } }
             }
         }
     }
+    if root.drawer: SoundDrawer { x: parent.width - 360px; width: 360px; }
     if AppState.outcome-open: OutcomePanel { }
 }

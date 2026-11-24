@@ -1,5 +1,6 @@
 //! StudyForge GUI entry point.
 
+mod audio;
 mod backend;
 mod sys;
 
