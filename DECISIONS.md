@@ -48,7 +48,7 @@ Slint cannot lay out mixed bold/plain runs inside one wrapped `Text`. Blocks (he
 * `systemctl stop studyd` does **not** end a lock (state is persisted and re-applied on the next start) but, as for any root user, nothing can stop root from editing `/etc/hosts` — this is a commitment device, not a security boundary (see README).
 
 ## IPC
-JSON lines; first message must be `Hello` with the protocol version. Linux: `/run/studyd/studyd.sock` (mode 0666) with `SO_PEERCRED` checked via `interprocess::peer_creds` against `/etc/studyd/allowed_users` (root always allowed) before any byte is read; max 16 connections, 1 MiB lines. Windows: named pipe with a DACL for SYSTEM + Administrators + the installing user's SID (SIDs are validated before going into the SDDL string).
+JSON lines; first message must be `Hello` with the protocol version. Linux: `/run/studyd/studyd.sock` (mode 0666) with `SO_PEERCRED` checked via `interprocess::peer_creds` against `/etc/studyd/allowed_users` (root always allowed) before any byte is read; max 16 connections, 1 MiB lines. Windows: named pipe with a protected DACL granting only SYSTEM and the installing user's SID (SIDs are validated before going into the SDDL string; unit tested). Root (Linux) is always accepted in addition to `allowed_users`.
 
 ## Platform notes
 * **Wayland**: the overlay requests `always-on-top`, which plain `xdg_toplevel`s cannot force; on Hyprland/Sway add a window rule (e.g. Hyprland `windowrulev2 = float, title:^(StudyForge Focus Check)$` and `windowrulev2 = pin, title:^(StudyForge Focus Check)$`). The global hotkey uses the GlobalShortcuts portal; if absent the feature is disabled with a message in Settings and the tray menu remains.

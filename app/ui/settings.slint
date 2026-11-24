@@ -74,6 +74,15 @@ export component SettingsPage inherits ScrollView {
         }
 
         Section {
+            height: 120px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Flashcards"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                SpinRow { label: "New cards per deck per day"; key: "new_cards_per_day"; value: AppState.settings.new-cards-per-day; min: 0; max: 500; }
+            }
+        }
+
+        Section {
             height: 200px;
             VerticalLayout {
                 padding: 16px; spacing: 8px;

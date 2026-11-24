@@ -30,14 +30,20 @@ fn to_name(endpoint: &str) -> io::Result<interprocess::local_socket::Name<'_>> {
     endpoint.trim_start_matches(r"\\.\pipe\").to_ns_name::<GenericNamespaced>()
 }
 
-/// SDDL for the pipe: SYSTEM + Administrators + each allowed SID. SIDs are validated.
-#[cfg(windows)]
+/// SDDL for the Windows pipe: SYSTEM plus each allowed SID, nobody else
+/// (protected DACL, no inheritance). SIDs are validated so a bad
+/// `allowed_users` line cannot inject extra ACEs. Pure string logic, so it is
+/// unit tested on every platform.
 pub fn sddl_for(allowed: &[String]) -> String {
-    let mut s = String::from("D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+    let mut s = String::from("D:P(A;;GA;;;SY)");
     for sid in allowed {
-        let ok = sid.starts_with("S-1-") && sid.chars().all(|c| c.is_ascii_digit() || c == '-' || c == 'S');
-        if ok {
+        let valid = sid.starts_with("S-1-")
+            && sid.len() < 200
+            && sid[4..].split('-').all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()));
+        if valid {
             s.push_str(&format!("(A;;GA;;;{sid})"));
+        } else {
+            tracing::warn!("ignoring malformed SID in allowed_users");
         }
     }
     s
@@ -288,5 +294,24 @@ mod tests {
         let n = reader.read_line(&mut l).unwrap_or(0);
         assert_eq!(n, 0, "server hung up without a reply");
         stop.store(true, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod sddl_tests {
+    use super::sddl_for;
+
+    #[test]
+    fn only_system_and_listed_sids() {
+        assert_eq!(sddl_for(&[]), "D:P(A;;GA;;;SY)");
+        let sid = "S-1-5-21-1004336348-1177238915-682003330-1001";
+        assert_eq!(sddl_for(&[sid.into()]), format!("D:P(A;;GA;;;SY)(A;;GA;;;{sid})"));
+    }
+
+    #[test]
+    fn malformed_sids_cannot_inject_aces() {
+        for bad in ["WD", "S-1-1-0)(A;;GA;;;WD", "S-1-", "S-1-5-x", "S-1-5-21-1 (A;;GA;;;WD)", "", "S-1-5-21--1"] {
+            assert_eq!(sddl_for(&[bad.to_string()]), "D:P(A;;GA;;;SY)", "{bad:?}");
+        }
     }
 }
