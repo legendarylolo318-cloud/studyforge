@@ -167,7 +167,12 @@ fn main() -> anyhow::Result<()> {
         })
     };
     let tray = sys::tray::Tray::spawn(tray_handler);
-    let have_tray = tray.is_some();
+    let have_tray = tray.is_some() && sys::tray::host_available();
+    if tray.is_some() && !have_tray {
+        tracing::warn!(
+            "no system tray host found (GNOME needs the AppIndicator extension); closing the window will quit"
+        );
+    }
 
     // --- hotkey (event-loop thread) ---
     let hotkey_status = {

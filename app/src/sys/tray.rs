@@ -212,3 +212,36 @@ mod imp {
 }
 
 pub use imp::Tray;
+
+/// Is there anything that will actually *display* a tray icon?
+///
+/// On Linux, AppIndicator icons are shown by a StatusNotifier host (KDE,
+/// waybar, the GNOME AppIndicator extension...). Creating the icon succeeds
+/// even when no host exists, so check the session bus for the watcher;
+/// otherwise "close to tray" would hide the window with no way back.
+#[cfg(target_os = "linux")]
+pub fn host_available() -> bool {
+    let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return false };
+    rt.block_on(async {
+        let fut = async {
+            let conn = zbus::Connection::session().await.ok()?;
+            let reply = conn
+                .call_method(
+                    Some("org.freedesktop.DBus"),
+                    "/org/freedesktop/DBus",
+                    Some("org.freedesktop.DBus"),
+                    "NameHasOwner",
+                    &("org.kde.StatusNotifierWatcher",),
+                )
+                .await
+                .ok()?;
+            reply.body().deserialize::<bool>().ok()
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), fut).await.ok().flatten().unwrap_or(false)
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn host_available() -> bool {
+    true
+}
