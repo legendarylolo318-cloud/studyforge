@@ -30,7 +30,7 @@ component ColumnChart inherits Rectangle {
 
 export component StatsPage inherits ScrollView {
     VerticalLayout {
-        spacing: 14px; padding-right: 10px;
+        spacing: 14px; padding-right: 10px; alignment: start;
         HorizontalLayout {
             spacing: 12px; height: 80px;
             Total { title: "Today"; value: AppState.stats-today; }

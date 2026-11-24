@@ -160,7 +160,7 @@ component PolicyNote inherits Card {
 
 export component BlockingPage inherits ScrollView {
     VerticalLayout {
-        spacing: 12px; padding-right: 10px;
+        spacing: 12px; padding-right: 10px; alignment: start;
         HelperCard { }
         HorizontalLayout {
             spacing: 12px; height: 520px;
@@ -186,8 +186,8 @@ export component BlockingPage inherits ScrollView {
             if AppState.edit-list-id < 0: Card { horizontal-stretch: 1; Text { text: "Select a list to view or edit it"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; } }
         }
         ScheduleCard { height: 150px + AppState.schedules.length * 38px; }
-        AllowlistCard { height: 330px; }
-        PolicyNote { height: 190px; }
+        AllowlistCard { }
+        PolicyNote { }
         Rectangle { height: 16px; }
     }
 }

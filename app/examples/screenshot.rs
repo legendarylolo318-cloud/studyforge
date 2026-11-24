@@ -269,7 +269,7 @@ fn main() {
     let light = std::env::args().nth(2).as_deref() == Some("light");
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(P(window.clone()))).unwrap();
-    let (w, h) = (1200u32, 780u32);
+    let (w, h) = (1200u32, std::env::var("SHOT_H").ok().and_then(|v| v.parse().ok()).unwrap_or(780u32));
     window.set_size(PhysicalSize::new(w, h));
     let ui = AppWindow::new().unwrap();
     demo(&ui);
