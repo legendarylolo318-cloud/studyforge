@@ -1,0 +1,114 @@
+import { Theme } from "theme.slint";
+
+export component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    clip: true;
+}
+
+export component Heading inherits Text {
+    font-size: 22px;
+    font-weight: 700;
+    color: Theme.text;
+}
+
+export component Dim inherits Text {
+    color: Theme.text-dim;
+    font-size: 13px;
+    wrap: word-wrap;
+}
+
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+    min-width: 90px;
+    height: 36px;
+    border-radius: 8px;
+    background: !enabled ? Theme.surface-hi : danger ? Theme.danger : (ta.has-hover ? Theme.accent.brighter(0.15) : Theme.accent);
+    Text { text: root.text; color: root.enabled ? Theme.on-accent : Theme.text-dim; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } mouse-cursor: pointer; }
+}
+
+export component GhostButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> selected: false;
+    callback clicked();
+    min-width: 70px;
+    height: 32px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: selected ? Theme.accent : Theme.border;
+    background: selected ? Theme.accent.with-alpha(0.18) : (ta.has-hover ? Theme.surface-hi : transparent);
+    Text { text: root.text; color: root.enabled ? (root.selected ? Theme.accent : Theme.text) : Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; font-size: 13px; }
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } mouse-cursor: pointer; }
+}
+
+export component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 40px;
+    border-radius: 8px;
+    background: active ? Theme.accent.with-alpha(0.2) : (ta.has-hover ? Theme.surface-hi : transparent);
+    HorizontalLayout {
+        padding-left: 14px;
+        alignment: start;
+        Rectangle { width: 3px; background: active ? Theme.accent : transparent; border-radius: 2px; }
+        Text { text: "  " + root.label; color: active ? Theme.accent : Theme.text; vertical-alignment: center; font-size: 14px; font-weight: active ? 700 : 400; }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+}
+
+export component Pill inherits Rectangle {
+    in property <string> text;
+    in property <color> tint: Theme.accent;
+    border-radius: 10px;
+    background: tint.with-alpha(0.2);
+    height: 20px;
+    min-width: 20px;
+    Text { text: root.text; color: root.tint; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+}
+
+// A horizontal bar with a fill fraction (0..1).
+export component Bar inherits Rectangle {
+    in property <float> fraction: 0;
+    in property <color> fill: Theme.accent;
+    height: 10px;
+    border-radius: 5px;
+    background: Theme.surface-hi;
+    Rectangle {
+        x: 0; width: parent.width * Math.min(1, Math.max(0, root.fraction));
+        height: parent.height; border-radius: 5px; background: root.fill;
+    }
+}
+
+// Circular progress ring drawn with a Path.
+export component Ring inherits Rectangle {
+    in property <float> progress: 0;   // 0..1
+    in property <string> label;
+    in property <string> sub;
+    in property <color> fill: Theme.accent;
+    width: 150px; height: 150px;
+    property <float> p: Math.min(0.9999, Math.max(0.0001, progress));
+    property <length> r: (Math.min(self.width, self.height) - 16px) / 2;
+    Path {
+        x: 0; y: 0; width: parent.width; height: parent.height;
+        stroke: Theme.surface-hi; stroke-width: 12px;
+        commands: "M \{root.width / 2 / 1px} \{root.height / 2 / 1px - root.r / 1px} A \{root.r / 1px} \{root.r / 1px} 0 1 1 \{root.width / 2 / 1px - 0.01} \{root.height / 2 / 1px - root.r / 1px}";
+    }
+    Path {
+        x: 0; y: 0; width: parent.width; height: parent.height;
+        stroke: root.fill; stroke-width: 12px; stroke-line-cap: round;
+        commands: "M \{root.width / 2 / 1px} \{root.height / 2 / 1px - root.r / 1px} A \{root.r / 1px} \{root.r / 1px} 0 \{root.p > 0.5 ? 1 : 0} 1 \{root.width / 2 / 1px + root.r / 1px * Math.sin(root.p * 360deg)} \{root.height / 2 / 1px - root.r / 1px * Math.cos(root.p * 360deg)}";
+    }
+    VerticalLayout {
+        alignment: center;
+        Text { text: root.label; font-size: 24px; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
+        Text { text: root.sub; font-size: 11px; color: Theme.text-dim; horizontal-alignment: center; }
+    }
+}

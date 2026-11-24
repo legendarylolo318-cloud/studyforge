@@ -1,0 +1,44 @@
+import { Theme } from "theme.slint";
+import { NavItem, Heading, Dim, Card, GhostButton } from "components.slint";
+export { Theme }
+
+export component AppWindow inherits Window {
+    title: "StudyForge";
+    min-width: 900px;
+    min-height: 620px;
+    preferred-width: 1100px;
+    preferred-height: 720px;
+    background: Theme.bg;
+
+    in-out property <int> page: 0;
+    in-out property <string> status-line;
+
+    HorizontalLayout {
+        Rectangle {
+            width: 210px;
+            background: Theme.sidebar;
+            VerticalLayout {
+                padding: 14px;
+                spacing: 4px;
+                Text { text: "StudyForge"; font-size: 20px; font-weight: 800; color: Theme.accent; }
+                Rectangle { height: 14px; }
+                for name[i] in ["Dashboard", "Focus", "Flashcards", "Notes", "Tasks", "Blocking", "Stats", "Settings"] : NavItem {
+                    label: name;
+                    active: root.page == i;
+                    clicked => { root.page = i; }
+                }
+                Rectangle { vertical-stretch: 1; }
+                Dim { text: root.status-line; }
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                padding: 24px;
+                spacing: 12px;
+                Heading { text: ["Dashboard", "Focus", "Flashcards", "Notes", "Tasks", "Blocking", "Stats", "Settings"][root.page]; }
+                Card { vertical-stretch: 1; Text { text: "Coming soon"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; } }
+            }
+        }
+    }
+}

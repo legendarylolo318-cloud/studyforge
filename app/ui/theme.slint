@@ -1,0 +1,25 @@
+import { Palette } from "std-widgets.slint";
+
+// Theme mode: 0 = dark, 1 = light, 2 = follow system.
+export global Theme {
+    in-out property <int> mode: 0;
+    in-out property <int> accent-index: 0;
+    out property <bool> dark: mode == 0 || (mode == 2 && Palette.color-scheme != ColorScheme.light);
+
+    out property <color> accent: accent-index == 0 ? #6c8cff : accent-index == 1 ? #2fc5a0 : accent-index == 2 ? #ef6f6c : accent-index == 3 ? #f2a93b : accent-index == 4 ? #b57cf0 : #e77bb5;
+    out property <color> on-accent: #ffffff;
+
+    out property <color> bg: dark ? #14161b : #f3f4f8;
+    out property <color> sidebar: dark ? #101217 : #e7e9f0;
+    out property <color> surface: dark ? #1c1f27 : #ffffff;
+    out property <color> surface-hi: dark ? #262a35 : #eceef5;
+    out property <color> border: dark ? #2e3340 : #d5d8e3;
+    out property <color> text: dark ? #e8eaf0 : #1c2030;
+    out property <color> text-dim: dark ? #8d93a6 : #5d6478;
+    out property <color> danger: #ef5b5b;
+    out property <color> warn: #f2a93b;
+    out property <color> ok: #3ec28f;
+
+    out property <length> radius: 10px;
+    out property <length> gap: 12px;
+}
