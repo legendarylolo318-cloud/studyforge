@@ -1,0 +1,89 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Card, Dim, Ring, Bar } from "components.slint";
+import { TaskRow } from "tasks.slint";
+
+component Stat inherits Card {
+    in property <string> title;
+    in property <string> value;
+    in property <string> sub;
+    VerticalLayout {
+        padding: 16px; spacing: 4px; alignment: center;
+        Dim { text: root.title; }
+        Text { text: root.value; font-size: 30px; font-weight: 700; color: Theme.text; }
+        Dim { text: root.sub; }
+    }
+}
+
+export component DashboardPage inherits ScrollView {
+    VerticalLayout {
+        spacing: 14px;
+        padding-right: 10px;
+        HorizontalLayout {
+            spacing: 14px; height: 200px;
+            Card {
+                HorizontalLayout {
+                    padding: 14px; spacing: 12px;
+                    Ring { progress: AppState.dash-today-progress; label: AppState.dash-today-text; sub: "today"; width: 150px; height: 150px; y: 15px; }
+                    VerticalLayout { alignment: center; Dim { text: "Daily goal"; } Dim { text: AppState.dash-today-sub; } }
+                }
+            }
+            Card {
+                HorizontalLayout {
+                    padding: 14px; spacing: 12px;
+                    Ring { progress: AppState.dash-week-progress; label: AppState.dash-week-text; sub: "this week"; fill: Theme.ok; width: 150px; height: 150px; y: 15px; }
+                    VerticalLayout { alignment: center; Dim { text: "Weekly goal"; } Dim { text: AppState.dash-week-sub; } }
+                }
+            }
+            Card {
+                VerticalLayout {
+                    padding: 16px; spacing: 6px; alignment: center;
+                    Dim { text: "Streak"; }
+                    Text { text: "🔥 " + AppState.dash-streak + (AppState.dash-streak == 1 ? " day" : " days"); font-size: 28px; font-weight: 700; color: Theme.text; }
+                    Dim { text: "Freeze tokens: " + AppState.dash-freezes + " / 2"; }
+                    Dim { text: AppState.dash-streak-note; }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 14px; height: 230px;
+            Card {
+                VerticalLayout {
+                    padding: 14px; spacing: 6px;
+                    Text { text: "Next due"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                    for t in AppState.next-tasks : TaskRow {
+                        compact: true; id: t.id; title: t.title; subject: t.subject; subject-color: t.subject-color;
+                        due: t.due; priority: t.priority; done: t.done; overdue: t.overdue;
+                    }
+                    if AppState.next-tasks.length == 0: Dim { text: "No upcoming tasks with a due date."; }
+                    Rectangle { vertical-stretch: 1; }
+                }
+            }
+            Card {
+                VerticalLayout {
+                    padding: 14px; spacing: 8px;
+                    Text { text: "Flashcards"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                    Text { text: AppState.dash-cards-due + " due"; font-size: 28px; font-weight: 700; color: Theme.accent; }
+                    Rectangle { vertical-stretch: 1; }
+                    Text { text: "Blocking"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                    Dim { text: AppState.dash-block-status; }
+                }
+            }
+        }
+        Card {
+            height: 60px + AppState.stats-subject-bars.length * 30px;
+            VerticalLayout {
+                padding: 14px; spacing: 6px;
+                Text { text: "Time by subject (last 30 days)"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                for b in AppState.stats-subject-bars : HorizontalLayout {
+                    spacing: 10px; height: 22px;
+                    Text { text: b.label; width: 140px; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                    Bar { fraction: b.value; fill: b.color; y: 6px; horizontal-stretch: 1; }
+                    Text { text: b.text; width: 70px; color: Theme.text-dim; vertical-alignment: center; horizontal-alignment: right; }
+                }
+                if AppState.stats-subject-bars.length == 0: Dim { text: "Complete a focus session to see data here."; }
+            }
+        }
+    }
+}

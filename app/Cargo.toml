@@ -30,4 +30,6 @@ slint-build = "1.19.1"
 gtk = "0.18"
 
 [dev-dependencies]
+png = "0.18.1"
+slint = { version = "1.19.1", features = ["renderer-software", "software-renderer-systemfonts", "compat-1-2"] }
 tempfile = "3.27.0"

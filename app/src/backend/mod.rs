@@ -2,6 +2,8 @@
 //! directly. UI updates are pushed with `upgrade_in_event_loop`.
 
 use crate::audio::{self, Audio, AudioCmd, TrackInfo};
+mod data;
+
 use crate::sys::tray::{Tray, TrayState};
 use crate::{AppState, AppWindow, SettingsData, SubjectItem, TipItem, TrackItem};
 use std::collections::HashMap;
@@ -27,6 +29,16 @@ pub enum Cmd {
     DeleteSubject(i64),
     AddTip(String),
     DeleteTip(i64),
+    PageChanged(i32),
+    AddTodo { title: String, subject_idx: i32, due: String, prio: i32 },
+    ToggleTodo(i64, bool),
+    DeleteTodo(i64),
+    SetTaskView(i32, i32),
+    NewNote,
+    SelectNote(i64),
+    EditNote { title: String, body: String, subject_idx: i32 },
+    DeleteNote,
+    SearchNotes(i32, String),
     SetTrackVolume { id: String, volume: f32 },
     ToggleSounds,
     OpenSoundsFolder,
@@ -61,6 +73,16 @@ pub struct Backend {
     mix: HashMap<String, f32>,
     sounds_dir: PathBuf,
     sounds_playing: bool,
+    page: i32,
+    todo_filter: i32,
+    todo_sort: i32,
+    note_filter: i32,
+    note_query: String,
+    current_note: Option<Id>,
+    pending_note: Option<data::PendingNote>,
+    preview_dirty: Option<Instant>,
+    last_refresh: Instant,
+    block_status: String,
 }
 
 pub fn stamp() -> Stamp {
@@ -159,6 +181,16 @@ impl Backend {
             mix: HashMap::new(),
             sounds_dir: studyforge_core::paths::sounds_dir(&data_dir),
             sounds_playing: false,
+            page: 0,
+            todo_filter: 0,
+            todo_sort: 0,
+            note_filter: 0,
+            note_query: String::new(),
+            current_note: None,
+            pending_note: None,
+            preview_dirty: None,
+            last_refresh: Instant::now(),
+            block_status: "Blocking helper not installed".into(),
         };
         let _ = std::fs::create_dir_all(&b.sounds_dir);
         b.mix = b.db.get_kv("sound_mix").ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
@@ -168,6 +200,8 @@ impl Backend {
         b.push_settings();
         b.push_lists();
         b.push_timer();
+        b.push_note_filter_names();
+        b.refresh_for_page();
         b
     }
 
@@ -200,6 +234,7 @@ impl Backend {
     }
 
     fn shutdown(&mut self) {
+        self.flush_note();
         self.audio.send(AudioCmd::Quit);
         if self.timer.is_active() {
             let (s, _) = self.timer.stop(stamp());
@@ -238,6 +273,7 @@ impl Backend {
                     }
                 }
                 let _ = self.ui.upgrade_in_event_loop(|ui| ui.global::<AppState>().set_outcome_open(false));
+                self.refresh_for_page();
             }
             Cmd::SetSetting { key, value } => self.set_setting(&key, value),
             Cmd::AddSubject { name, color } => {
@@ -264,6 +300,30 @@ impl Backend {
                 self.reload_lists();
                 self.push_lists();
             }
+            Cmd::PageChanged(p) => {
+                self.flush_note();
+                self.page = p;
+                self.refresh_for_page();
+            }
+            Cmd::AddTodo { title, subject_idx, due, prio } => self.add_todo(title, subject_idx, due, prio),
+            Cmd::ToggleTodo(id, done) => {
+                let _ = self.db.set_todo_done(id, done);
+                self.push_todos();
+            }
+            Cmd::DeleteTodo(id) => {
+                let _ = self.db.delete_todo(id);
+                self.push_todos();
+            }
+            Cmd::SetTaskView(f, s) => {
+                self.todo_filter = f;
+                self.todo_sort = s;
+                self.push_todos();
+            }
+            Cmd::NewNote => self.new_note(),
+            Cmd::SelectNote(id) => self.select_note(id),
+            Cmd::EditNote { title, body, subject_idx } => self.edit_note(title, body, subject_idx),
+            Cmd::DeleteNote => self.delete_note(),
+            Cmd::SearchNotes(f, q) => self.search_notes(f, q),
             Cmd::SetTrackVolume { id, volume } => {
                 self.mix.insert(id.clone(), volume);
                 if let Ok(j) = serde_json::to_string(&self.mix) {
@@ -362,6 +422,10 @@ impl Backend {
             }
         }
         self.push_timer();
+        self.tick_notes();
+        if self.last_refresh.elapsed() > Duration::from_secs(30) && matches!(self.page, 0 | 6) {
+            self.refresh_for_page();
+        }
     }
 
     fn handle_events(&mut self, events: Vec<TimerEvent>) {
@@ -424,6 +488,7 @@ impl Backend {
     fn reload_lists(&mut self) {
         self.subjects = self.db.subjects().unwrap_or_default();
         self.tips = self.db.tips().unwrap_or_default();
+        self.push_note_filter_names();
     }
 
     fn push_lists(&self) {
@@ -621,7 +686,47 @@ pub fn open_folder(p: &std::path::Path) {
 }
 
 pub fn wire_callbacks(ui: &AppWindow, tx: &Sender<Cmd>) {
+    let t = tx.clone();
+    ui.on_page_changed(move |p| {
+        let _ = t.send(Cmd::PageChanged(p));
+    });
     let st = ui.global::<AppState>();
+    let t = tx.clone();
+    st.on_add_todo(move |title, s, due, p| {
+        let _ = t.send(Cmd::AddTodo { title: title.to_string(), subject_idx: s, due: due.to_string(), prio: p });
+    });
+    let t = tx.clone();
+    st.on_toggle_todo(move |id, d| {
+        let _ = t.send(Cmd::ToggleTodo(id as i64, d));
+    });
+    let t = tx.clone();
+    st.on_delete_todo(move |id| {
+        let _ = t.send(Cmd::DeleteTodo(id as i64));
+    });
+    let t = tx.clone();
+    st.on_set_task_view(move |f, s| {
+        let _ = t.send(Cmd::SetTaskView(f, s));
+    });
+    let t = tx.clone();
+    st.on_new_note(move || {
+        let _ = t.send(Cmd::NewNote);
+    });
+    let t = tx.clone();
+    st.on_select_note(move |id| {
+        let _ = t.send(Cmd::SelectNote(id as i64));
+    });
+    let t = tx.clone();
+    st.on_edit_note(move |title, body, s| {
+        let _ = t.send(Cmd::EditNote { title: title.to_string(), body: body.to_string(), subject_idx: s });
+    });
+    let t = tx.clone();
+    st.on_delete_note(move || {
+        let _ = t.send(Cmd::DeleteNote);
+    });
+    let t = tx.clone();
+    st.on_search_notes(move |f, q| {
+        let _ = t.send(Cmd::SearchNotes(f, q.to_string()));
+    });
     let t = tx.clone();
     st.on_set_track_volume(move |id, v| {
         let _ = t.send(Cmd::SetTrackVolume { id: id.to_string(), volume: v });

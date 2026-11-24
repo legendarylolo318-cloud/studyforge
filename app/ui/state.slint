@@ -1,4 +1,4 @@
-import { SubjectItem, TipItem, SettingsData, TrackItem } from "structs.slint";
+import { SubjectItem, TipItem, SettingsData, TrackItem, TodoItem, NoteItem, MdBlock, BarItem, SessionRow, DistractionRow } from "structs.slint";
 
 // Shared state between Rust and the screens. Rust owns the data; the UI only
 // reads properties and invokes callbacks.
@@ -42,6 +42,59 @@ export global AppState {
     callback toggle-sounds();
     callback open-sounds-folder();
     callback rescan-sounds();
+
+    // ----- dashboard -----
+    in-out property <string> dash-today-text: "0m";
+    in-out property <float> dash-today-progress: 0;
+    in-out property <string> dash-today-sub: "";
+    in-out property <string> dash-week-text: "0m";
+    in-out property <float> dash-week-progress: 0;
+    in-out property <string> dash-week-sub: "";
+    in-out property <int> dash-streak: 0;
+    in-out property <int> dash-freezes: 0;
+    in-out property <string> dash-streak-note: "";
+    in-out property <int> dash-cards-due: 0;
+    in-out property <string> dash-block-status: "Blocking helper not installed";
+    in-out property <[TodoItem]> next-tasks;
+
+    // ----- tasks -----
+    in-out property <[TodoItem]> todos;
+    in-out property <int> task-filter: 0;   // 0 all, 1 open, 2 done, 3 overdue
+    in-out property <int> task-sort: 0;     // 0 due, 1 priority, 2 newest
+    in-out property <string> task-error;
+    callback add-todo(string, int, string, int);
+    callback toggle-todo(int, bool);
+    callback delete-todo(int);
+    callback set-task-view(int, int);
+
+    // ----- notes -----
+    in-out property <[NoteItem]> notes;
+    in-out property <[string]> note-filter-names: ["All subjects"];
+    in-out property <int> note-filter: 0;
+    in-out property <int> current-note-id: -1;
+    in-out property <string> note-title;
+    in-out property <string> note-body;
+    in-out property <int> note-subject: 0;
+    in-out property <[MdBlock]> note-blocks;
+    in-out property <int> note-load-seq: 0;
+    in-out property <string> note-saved: "";
+    callback new-note();
+    callback select-note(int);
+    callback edit-note(string, string, int);
+    callback delete-note();
+    callback search-notes(int, string);
+
+    // ----- stats -----
+    in-out property <string> stats-today;
+    in-out property <string> stats-week;
+    in-out property <string> stats-month;
+    in-out property <string> stats-all;
+    in-out property <[BarItem]> stats-subject-bars;
+    in-out property <[BarItem]> stats-day-bars;
+    in-out property <[BarItem]> stats-hour-bars;
+    in-out property <[BarItem]> stats-app-bars;
+    in-out property <[SessionRow]> stats-sessions;
+    in-out property <[DistractionRow]> stats-distractions;
 
     // ----- timer callbacks -----
     callback start-session(int /*mode*/, int /*subject idx*/, string /*goal*/);

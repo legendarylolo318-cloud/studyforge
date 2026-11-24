@@ -5409,6 +5409,7 @@ dependencies = [
  "gtk",
  "muda",
  "notify-rust",
+ "png",
  "rfd",
  "rodio",
  "serde_json",

@@ -74,6 +74,17 @@ export component SettingsPage inherits ScrollView {
         }
 
         Section {
+            height: 200px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Goals & streaks"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                SpinRow { label: "Daily goal (minutes)"; key: "daily_goal_mins"; value: AppState.settings.daily-goal-mins; max: 1440; }
+                SpinRow { label: "Weekly goal (minutes)"; key: "weekly_goal_mins"; value: AppState.settings.weekly-goal-mins; max: 10080; }
+                SpinRow { label: "Minutes needed for a day to count toward the streak"; key: "streak_min_mins"; value: AppState.settings.streak-min-mins; max: 600; }
+            }
+        }
+
+        Section {
             height: 290px;
             VerticalLayout {
                 padding: 16px; spacing: 8px;

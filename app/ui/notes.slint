@@ -1,0 +1,98 @@
+import { ComboBox, LineEdit, TextEdit, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Card, Dim, PrimaryButton, GhostButton } from "components.slint";
+
+component MdView inherits ScrollView {
+    VerticalLayout {
+        padding: 12px; spacing: 8px; alignment: start;
+        // kind: 0 heading, 1 paragraph, 2 list item, 3 code, 4 quote, 5 rule
+        for b in AppState.note-blocks : VerticalLayout {
+            if b.kind == 0: Text {
+                text: b.text; wrap: word-wrap; color: Theme.text; font-weight: 700;
+                font-size: b.level == 1 ? 26px : b.level == 2 ? 22px : b.level == 3 ? 18px : 16px;
+            }
+            if b.kind == 1: Text { text: b.text; wrap: word-wrap; color: Theme.text; font-weight: b.bold ? 700 : 400; font-italic: b.italic; font-size: 14px; }
+            if b.kind == 2: HorizontalLayout {
+                padding-left: 10px + b.indent * 18px;
+                Text { text: b.text; wrap: word-wrap; color: Theme.text; font-size: 14px; font-weight: b.bold ? 700 : 400; font-italic: b.italic; }
+            }
+            if b.kind == 3: Rectangle {
+                background: Theme.surface-hi; border-radius: 6px;
+                VerticalLayout { padding: 8px; Text { text: b.text; wrap: word-wrap; font-family: "monospace"; color: Theme.text; font-size: 13px; } }
+            }
+            if b.kind == 4: Rectangle {
+                background: Theme.accent.with-alpha(0.08); border-radius: 4px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle { width: 3px; background: Theme.accent; }
+                    Text { text: b.text; wrap: word-wrap; color: Theme.text-dim; font-italic: true; }
+                }
+            }
+            if b.kind == 5: Rectangle { height: 1px; background: Theme.border; }
+        }
+    }
+}
+
+component NoteEditor inherits VerticalLayout {
+    spacing: 8px;
+    // Re-load the widgets whenever Rust loads a note (typing breaks `text` bindings,
+    // so this is done imperatively).
+    property <int> seq: AppState.note-load-seq;
+    changed seq => { title.text = AppState.note-title; body.text = AppState.note-body; }
+    init => { title.text = AppState.note-title; body.text = AppState.note-body; }
+    HorizontalLayout {
+        spacing: 8px;
+        title := LineEdit { placeholder-text: "Title"; horizontal-stretch: 1; edited(t) => { AppState.edit-note(t, body.text, subj.current-index); } }
+        subj := ComboBox { model: AppState.subject-names; current-index: AppState.note-subject; width: 160px; selected(v) => { AppState.edit-note(title.text, body.text, self.current-index); } }
+        GhostButton { text: "Delete"; clicked => { AppState.delete-note(); } }
+    }
+    HorizontalLayout {
+        spacing: 8px; vertical-stretch: 1;
+        body := TextEdit {
+            horizontal-stretch: 1;
+            font-size: 14px;
+            wrap: word-wrap;
+            edited(t) => { AppState.edit-note(title.text, t, subj.current-index); }
+        }
+        Card { horizontal-stretch: 1; MdView { } }
+    }
+    Dim { text: AppState.note-saved; }
+}
+
+export component NotesPage inherits Rectangle {
+    HorizontalLayout {
+        spacing: 12px;
+        Card {
+            width: 260px;
+            VerticalLayout {
+                padding: 10px; spacing: 8px;
+                ComboBox { model: AppState.note-filter-names; current-index: AppState.note-filter; selected(v) => { AppState.search-notes(self.current-index, search.text); } }
+                search := LineEdit { placeholder-text: "Search notes…"; edited(t) => { AppState.search-notes(AppState.note-filter, t); } }
+                PrimaryButton { text: "+ New note"; clicked => { AppState.new-note(); } }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        spacing: 4px;
+                        for n in AppState.notes : Rectangle {
+                            height: 58px; border-radius: 8px;
+                            background: n.selected ? Theme.accent.with-alpha(0.2) : (ta.has-hover ? Theme.surface-hi : transparent);
+                            VerticalLayout {
+                                padding: 8px; spacing: 2px;
+                                Text { text: n.title == "" ? "Untitled" : n.title; font-weight: 700; color: Theme.text; overflow: elide; }
+                                Text { text: n.snippet; color: Theme.text-dim; font-size: 12px; overflow: elide; }
+                                Text { text: n.subject + (n.subject != "" ? " · " : "") + n.updated; color: Theme.text-dim; font-size: 11px; overflow: elide; }
+                            }
+                            ta := TouchArea { clicked => { AppState.select-note(n.id); } mouse-cursor: pointer; }
+                        }
+                    }
+                }
+            }
+        }
+        if AppState.current-note-id < 0: Card {
+            horizontal-stretch: 1;
+            Text { text: "Select or create a note"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        if AppState.current-note-id >= 0: NoteEditor { horizontal-stretch: 1; }
+    }
+}

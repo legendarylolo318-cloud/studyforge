@@ -33,3 +33,10 @@ export struct SettingsData {
 }
 
 export struct TrackItem { id: string, name: string, volume: float }
+
+export struct TodoItem { id: int, title: string, subject: string, subject-color: color, due: string, priority: int, done: bool, overdue: bool }
+export struct NoteItem { id: int, title: string, snippet: string, subject: string, updated: string, selected: bool }
+export struct MdBlock { kind: int, text: string, level: int, bold: bool, italic: bool, indent: int }
+export struct BarItem { label: string, value: float, text: string, color: color }
+export struct SessionRow { when: string, subject: string, goal: string, duration: string, outcome: string }
+export struct DistractionRow { when: string, target: string, list: string, action: string }

@@ -1,0 +1,81 @@
+import { ComboBox, LineEdit, CheckBox, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Card, Dim, PrimaryButton, GhostButton, Pill } from "components.slint";
+
+export component TaskRow inherits Rectangle {
+    in property <bool> compact: false;
+    in property <int> id;
+    in property <string> title;
+    in property <string> subject;
+    in property <color> subject-color;
+    in property <string> due;
+    in property <int> priority;
+    in property <bool> done;
+    in property <bool> overdue;
+    height: 38px;
+    border-radius: 8px;
+    background: overdue ? Theme.danger.with-alpha(0.12) : transparent;
+    HorizontalLayout {
+        padding-left: 6px; padding-right: 6px; spacing: 8px;
+        if !root.compact: CheckBox { checked: root.done; toggled => { AppState.toggle-todo(root.id, self.checked); } }
+        Text {
+            text: root.title; color: root.done ? Theme.text-dim : Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide;
+        }
+        if root.subject != "": Pill { text: root.subject; tint: root.subject-color; }
+        if root.due != "": Text { text: root.due; color: root.overdue ? Theme.danger : Theme.text-dim; font-size: 12px; vertical-alignment: center; font-weight: root.overdue ? 700 : 400; }
+        Pill { text: ["Low", "Med", "High"][root.priority]; tint: root.priority == 2 ? Theme.danger : root.priority == 1 ? Theme.warn : Theme.text-dim; }
+        if !root.compact: GhostButton { text: "✕"; min-width: 30px; height: 26px; y: 6px; clicked => { AppState.delete-todo(root.id); } }
+    }
+}
+
+export component TasksPage inherits Rectangle {
+    property <int> prio: 1;
+    VerticalLayout {
+        spacing: 12px;
+        Card {
+            height: 100px;
+            VerticalLayout {
+                padding: 14px; spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    title-in := LineEdit { placeholder-text: "New task…"; horizontal-stretch: 1; accepted => { add.clicked(); } }
+                    subj := ComboBox { model: AppState.subject-names; width: 150px; }
+                    due-in := LineEdit { placeholder-text: "due: YYYY-MM-DD / tomorrow / +3"; width: 220px; }
+                    prio-box := ComboBox { model: ["Low", "Medium", "High"]; current-index: 1; width: 100px; }
+                    add := PrimaryButton {
+                        text: "Add";
+                        clicked => {
+                            if (title-in.text != "") {
+                                AppState.add-todo(title-in.text, subj.current-index, due-in.text, prio-box.current-index);
+                                title-in.text = "";
+                            }
+                        }
+                    }
+                }
+                Text { text: AppState.task-error; color: Theme.danger; font-size: 12px; }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Dim { text: "Show"; vertical-alignment: center; }
+            for f[i] in ["All", "Open", "Done", "Overdue"] : GhostButton { text: f; selected: AppState.task-filter == i; clicked => { AppState.set-task-view(i, AppState.task-sort); } }
+            Rectangle { horizontal-stretch: 1; }
+            Dim { text: "Sort"; vertical-alignment: center; }
+            for f[i] in ["Due date", "Priority", "Newest"] : GhostButton { text: f; selected: AppState.task-sort == i; clicked => { AppState.set-task-view(AppState.task-filter, i); } }
+        }
+        Card {
+            vertical-stretch: 1;
+            ScrollView {
+                VerticalLayout {
+                    padding: 8px; spacing: 2px;
+                    for t in AppState.todos : TaskRow {
+                        id: t.id; title: t.title; subject: t.subject; subject-color: t.subject-color;
+                        due: t.due; priority: t.priority; done: t.done; overdue: t.overdue;
+                    }
+                    if AppState.todos.length == 0: Dim { text: "Nothing here. Add a task above."; horizontal-alignment: center; }
+                }
+            }
+        }
+    }
+}

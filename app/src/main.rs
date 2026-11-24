@@ -98,6 +98,10 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
+    if let Some(p) = std::env::var("STUDYFORGE_START_PAGE").ok().and_then(|v| v.parse::<i32>().ok()) {
+        ui.set_page(p);
+        let _ = tx.send(Cmd::PageChanged(p));
+    }
     let handle = backend::spawn(ui.as_weak(), data_dir, rx, tray, shared, hotkey_rebind);
     ui.show()?;
     slint::run_event_loop_until_quit()?;

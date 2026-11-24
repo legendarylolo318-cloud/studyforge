@@ -1,0 +1,117 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Card, Dim, Bar } from "components.slint";
+import { BarItem } from "structs.slint";
+
+component Total inherits Card {
+    in property <string> title;
+    in property <string> value;
+    VerticalLayout { padding: 14px; alignment: center; Dim { text: root.title; } Text { text: root.value; font-size: 22px; font-weight: 700; color: Theme.text; } }
+}
+
+
+component ColumnChart inherits Rectangle {
+    in property <[BarItem]> items;
+    in property <length> chart-height: 110px;
+    height: chart-height + 36px;
+    HorizontalLayout {
+        spacing: 4px;
+        for b in root.items : VerticalLayout {
+            spacing: 2px;
+            Rectangle { height: root.chart-height;
+                Rectangle { y: parent.height - self.height; height: max(2px, parent.height * b.value); border-radius: 3px; background: b.color; }
+            }
+            Text { text: b.label; font-size: 10px; color: Theme.text-dim; horizontal-alignment: center; }
+            Text { text: b.text; font-size: 10px; color: Theme.text-dim; horizontal-alignment: center; overflow: elide; }
+        }
+    }
+}
+
+export component StatsPage inherits ScrollView {
+    VerticalLayout {
+        spacing: 14px; padding-right: 10px;
+        HorizontalLayout {
+            spacing: 12px; height: 80px;
+            Total { title: "Today"; value: AppState.stats-today; }
+            Total { title: "This week"; value: AppState.stats-week; }
+            Total { title: "Last 30 days"; value: AppState.stats-month; }
+            Total { title: "All time"; value: AppState.stats-all; }
+        }
+        Card {
+            height: 220px;
+            VerticalLayout {
+                padding: 14px; spacing: 6px;
+                Text { text: "Last 14 days"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                ColumnChart { items: AppState.stats-day-bars; }
+            }
+        }
+        Card {
+            height: 60px + AppState.stats-subject-bars.length * 30px;
+            VerticalLayout {
+                padding: 14px; spacing: 6px;
+                Text { text: "By subject (30 days)"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                for b in AppState.stats-subject-bars : HorizontalLayout {
+                    spacing: 10px; height: 22px;
+                    Text { text: b.label; width: 140px; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                    Bar { fraction: b.value; fill: b.color; y: 6px; horizontal-stretch: 1; }
+                    Text { text: b.text; width: 70px; color: Theme.text-dim; vertical-alignment: center; horizontal-alignment: right; }
+                }
+            }
+        }
+        Card {
+            height: 60px + AppState.stats-sessions.length * 26px;
+            VerticalLayout {
+                padding: 14px; spacing: 4px;
+                Text { text: "Recent sessions"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                for s in AppState.stats-sessions : HorizontalLayout {
+                    spacing: 10px; height: 22px;
+                    Text { text: s.when; width: 110px; color: Theme.text-dim; font-size: 12px; vertical-alignment: center; }
+                    Text { text: s.duration; width: 60px; color: Theme.text; vertical-alignment: center; }
+                    Text { text: s.subject; width: 110px; color: Theme.text-dim; font-size: 12px; vertical-alignment: center; overflow: elide; }
+                    Text { text: s.goal; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    Text { text: s.outcome; width: 70px; color: s.outcome == "Done" ? Theme.ok : s.outcome == "Not done" ? Theme.danger : Theme.warn; vertical-alignment: center; }
+                }
+                if AppState.stats-sessions.length == 0: Dim { text: "No sessions yet."; }
+            }
+        }
+        Card {
+            height: 250px;
+            VerticalLayout {
+                padding: 14px; spacing: 6px;
+                Text { text: "Distractions by hour of day (30 days)"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                ColumnChart { items: AppState.stats-hour-bars; chart-height: 120px; }
+            }
+        }
+        Card {
+            height: 60px + max(1, AppState.stats-app-bars.length) * 30px;
+            VerticalLayout {
+                padding: 14px; spacing: 6px;
+                Text { text: "Distractions by app / site"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                for b in AppState.stats-app-bars : HorizontalLayout {
+                    spacing: 10px; height: 22px;
+                    Text { text: b.label; width: 180px; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                    Bar { fraction: b.value; fill: Theme.danger; y: 6px; horizontal-stretch: 1; }
+                    Text { text: b.text; width: 50px; color: Theme.text-dim; vertical-alignment: center; horizontal-alignment: right; }
+                }
+                if AppState.stats-app-bars.length == 0: Dim { text: "No blocked attempts logged."; }
+            }
+        }
+        Card {
+            height: 60px + max(1, AppState.stats-distractions.length) * 24px;
+            VerticalLayout {
+                padding: 14px; spacing: 4px;
+                Text { text: "Distraction log"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                for d in AppState.stats-distractions : HorizontalLayout {
+                    spacing: 10px; height: 20px;
+                    Text { text: d.when; width: 130px; color: Theme.text-dim; font-size: 12px; vertical-alignment: center; }
+                    Text { text: d.target; width: 200px; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                    Text { text: d.list; width: 140px; color: Theme.text-dim; font-size: 12px; vertical-alignment: center; overflow: elide; }
+                    Text { text: d.action; color: Theme.warn; vertical-alignment: center; }
+                }
+                if AppState.stats-distractions.length == 0: Dim { text: "Nothing logged."; }
+            }
+        }
+        Rectangle { height: 16px; }
+    }
+}
