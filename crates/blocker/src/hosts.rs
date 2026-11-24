@@ -320,6 +320,7 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), HostsError> {
         // Windows refuses to replace a read-only file: clear the attribute for
         // the swap, it is restored below.
         #[cfg(windows)]
+        #[allow(clippy::permissions_set_readonly_false)] // Windows only: clears the read-only *attribute*
         if was_readonly {
             let mut p = std::fs::metadata(&target)?.permissions();
             p.set_readonly(false);
@@ -335,6 +336,8 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), HostsError> {
             let _ = std::fs::remove_file(&tmp);
             (|| -> std::io::Result<()> {
                 #[cfg(windows)]
+                #[allow(clippy::permissions_set_readonly_false)]
+                // Windows only: clears the read-only *attribute*
                 if was_readonly {
                     let mut p = std::fs::metadata(&target)?.permissions();
                     p.set_readonly(false);

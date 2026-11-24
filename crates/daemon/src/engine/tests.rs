@@ -646,20 +646,22 @@ fn lock_is_never_longer_than_the_maximum_after_restart() {
     let r = rig();
     let dir = r.dir;
     // hand-craft a persisted state with an absurd deadline (corrupt/edited file)
-    let mut st = crate::state::Persisted::default();
-    st.active = Some(crate::state::ActiveSession {
-        goal: "x".into(),
-        started_at: T0,
-        spec: spec(EnforceMode::Hard),
-        hard: Some(HardModeConfig {
-            deadline: T0 + 400 * 86400,
-            early_exit_challenge: false,
-            exit_cooldown_mins: 20,
-            emergency_cooldown_mins: 60,
+    let st = crate::state::Persisted {
+        active: Some(crate::state::ActiveSession {
+            goal: "x".into(),
+            started_at: T0,
+            spec: spec(EnforceMode::Hard),
+            hard: Some(HardModeConfig {
+                deadline: T0 + 400 * 86400,
+                early_exit_challenge: false,
+                exit_cooldown_mins: 20,
+                emergency_cooldown_mins: 60,
+            }),
+            hard_state: Default::default(),
+            last_contact: T0,
         }),
-        hard_state: Default::default(),
-        last_contact: T0,
-    });
+        ..Default::default()
+    };
     st.save(&dir.path().join("state.json")).unwrap();
     drop(r.engine);
     let mut r2 = rig_in(dir);
