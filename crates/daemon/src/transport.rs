@@ -16,6 +16,15 @@ use std::time::Duration;
 use studyforge_core::ipc::*;
 
 pub const MAX_CONNECTIONS: usize = 16;
+/// A connection that sends nothing for this long is closed, so idle or
+/// malicious clients cannot pin all connection slots.
+#[cfg(not(test))]
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(test)]
+pub const IDLE_TIMEOUT: Duration = Duration::from_millis(500);
+pub const SEND_TIMEOUT: Duration = Duration::from_secs(5);
+/// Client side: how long to wait for studyd to answer one request.
+pub const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(unix)]
 fn to_name(endpoint: &str) -> io::Result<interprocess::local_socket::Name<'_>> {
@@ -81,6 +90,9 @@ pub trait Handler: Send + Sync + 'static {
 }
 
 fn serve_connection(stream: Stream, handler: &dyn Handler) -> io::Result<()> {
+    // Best effort: not every platform/stream type supports timeouts.
+    let _ = stream.set_recv_timeout(Some(IDLE_TIMEOUT));
+    let _ = stream.set_send_timeout(Some(SEND_TIMEOUT));
     let mut reader = BufReader::new(&stream);
     let mut send = &stream;
     let mut greeted = false;
@@ -172,6 +184,8 @@ pub fn serve(
 /// One-shot blocking request (used by `studyd status` and the tests).
 pub fn request(endpoint: &str, req: &Request) -> io::Result<Response> {
     let stream = Stream::connect(to_name(endpoint)?)?;
+    let _ = stream.set_recv_timeout(Some(CLIENT_TIMEOUT));
+    let _ = stream.set_send_timeout(Some(CLIENT_TIMEOUT));
     let mut reader = BufReader::new(&stream);
     let mut send = &stream;
     send.write_all(encode(&Request::Hello { protocol: PROTOCOL_VERSION, client: "studyd-cli".into() }).as_bytes())?;
@@ -278,6 +292,18 @@ mod tests {
         let mut l = String::new();
         reader.read_line(&mut l).unwrap();
         assert!(matches!(decode::<Response>(&l).unwrap(), Response::Error { .. }));
+        stop.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn idle_connections_cannot_starve_real_clients() {
+        let (_d, ep, stop) = start(vec![my_uid()]);
+        // Fill every slot (and more) with connections that never send anything.
+        let idle: Vec<Stream> =
+            (0..MAX_CONNECTIONS + 4).filter_map(|_| Stream::connect(to_name(&ep).unwrap()).ok()).collect();
+        std::thread::sleep(IDLE_TIMEOUT * 3);
+        assert_eq!(request(&ep, &Request::Ping).unwrap(), Response::Pong, "idle connections were reaped");
+        drop(idle);
         stop.store(true, Ordering::Relaxed);
     }
 

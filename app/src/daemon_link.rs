@@ -33,6 +33,9 @@ fn read_line(r: &mut impl BufRead) -> io::Result<String> {
 /// One request on a fresh connection (including the version handshake).
 pub fn request(endpoint: &str, req: &Request) -> io::Result<Response> {
     let stream = Stream::connect(to_name(endpoint)?)?;
+    // Never let a wedged helper hang the backend thread.
+    let _ = stream.set_recv_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_send_timeout(Some(Duration::from_secs(5)));
     let mut reader = BufReader::new(&stream);
     let mut send = &stream;
     send.write_all(encode(&Request::Hello { protocol: PROTOCOL_VERSION, client: "studyforge".into() }).as_bytes())?;
