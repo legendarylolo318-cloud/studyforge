@@ -127,8 +127,10 @@ pub struct FileRecord {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct RegRecord {
-    pub added_block: Vec<String>,
-    pub added_allow: Vec<String>,
+    /// (value name, data) pairs we created; a value is only removed while it
+    /// still holds exactly this data.
+    pub added_block: Vec<(String, String)>,
+    pub added_allow: Vec<(String, String)>,
     pub doh_before: Saved<String>,
 }
 
@@ -430,18 +432,23 @@ pub fn registry_apply<R: Registry>(
 
     // revert previous contribution first
     if let Some(rec) = &prev {
-        for (k, names) in [(&block_key, &rec.added_block), (&allow_key, &rec.added_allow)] {
-            for n in names {
-                let _ = reg.delete_value(k, n);
+        for (k, values) in [(&block_key, &rec.added_block), (&allow_key, &rec.added_allow)] {
+            for (n, data) in values {
+                if reg.get(k, n).as_deref() == Some(data.as_str()) {
+                    let _ = reg.delete_value(k, n);
+                }
             }
             reg.delete_key_if_empty(k);
         }
-        match &rec.doh_before {
-            Saved::Absent => {
-                let _ = reg.delete_value(root, "DnsOverHttpsMode");
+        // Only undo our DoH override if nobody changed it in the meantime.
+        if reg.get(root, "DnsOverHttpsMode").as_deref() == Some("off") {
+            match &rec.doh_before {
+                Saved::Absent => {
+                    let _ = reg.delete_value(root, "DnsOverHttpsMode");
+                }
+                Saved::Present(v) => reg.set(root, "DnsOverHttpsMode", v)?,
+                Saved::Untouched => {}
             }
-            Saved::Present(v) => reg.set(root, "DnsOverHttpsMode", v)?,
-            Saved::Untouched => {}
         }
         reg.delete_key_if_empty(root);
     }
@@ -462,8 +469,8 @@ pub fn registry_apply<R: Registry>(
             }
             let name = next_index(&existing).to_string();
             reg.set(key, &name, &e)?;
-            existing.push((name.clone(), e));
-            added.push(name);
+            existing.push((name.clone(), e.clone()));
+            added.push((name, e));
         }
     }
     rec.doh_before = Saved::of(reg.get(root, "DnsOverHttpsMode"));
@@ -815,6 +822,20 @@ mod tests {
         registry_apply(&mut reg, ROOT, &PolicySpec::default(), &mut st).unwrap();
         assert_eq!(reg.0, before);
         assert!(st.registry.is_empty());
+    }
+
+    #[test]
+    fn registry_revert_spares_values_the_user_changed_meanwhile() {
+        let mut reg = Fake::default();
+        let mut st = PolicyState::default();
+        registry_apply(&mut reg, ROOT, &spec(&["a.com"]), &mut st).unwrap();
+        let k = format!(r"{ROOT}\URLBlocklist");
+        // while the block is active the user (or an admin) repurposes value "1" and sets DoH
+        reg.set(&k, "1", "corp-policy.example").unwrap();
+        reg.set(ROOT, "DnsOverHttpsMode", "secure").unwrap();
+        registry_apply(&mut reg, ROOT, &PolicySpec::default(), &mut st).unwrap();
+        assert_eq!(reg.get(&k, "1").as_deref(), Some("corp-policy.example"));
+        assert_eq!(reg.get(ROOT, "DnsOverHttpsMode").as_deref(), Some("secure"));
     }
 
     #[test]
