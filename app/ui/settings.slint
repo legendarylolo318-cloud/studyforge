@@ -1,0 +1,147 @@
+import { SpinBox, Switch, LineEdit, Slider, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Card, Dim, PrimaryButton, GhostButton } from "components.slint";
+
+component Section inherits Card {
+    in property <string> title;
+    @children
+}
+
+component SpinRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> key;
+    in property <int> value;
+    in property <int> min: 1;
+    in property <int> max: 600;
+    spacing: 10px;
+    Text { text: root.label; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+    SpinBox { minimum: root.min; maximum: root.max; value: root.value; width: 130px; edited(v) => { AppState.set-int(root.key, v); } }
+}
+
+component SwitchRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> key;
+    in property <bool> value;
+    spacing: 10px;
+    Text { text: root.label; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+    Switch { checked: root.value; toggled => { AppState.set-bool(root.key, self.checked); } }
+}
+
+export component SettingsPage inherits ScrollView {
+    property <int> new-color: 0;
+    VerticalLayout {
+        spacing: 14px;
+        padding-right: 12px;
+
+        Section {
+            height: 330px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Timer"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                SpinRow { label: "Focus (minutes)"; key: "work_mins"; value: AppState.settings.work-mins; max: 240; }
+                SpinRow { label: "Short break (minutes)"; key: "short_break_mins"; value: AppState.settings.short-break-mins; max: 120; }
+                SpinRow { label: "Long break (minutes)"; key: "long_break_mins"; value: AppState.settings.long-break-mins; max: 240; }
+                SpinRow { label: "Long break every N cycles"; key: "cycles_before_long"; value: AppState.settings.cycles-before-long; max: 12; }
+                SpinRow { label: "Flow mode: remind after (min, 0 = off)"; key: "flow_reminder_mins"; value: AppState.settings.flow-reminder-mins; min: 0; max: 480; }
+                SwitchRow { label: "Auto-start next phase"; key: "auto_start_next"; value: AppState.settings.auto-start-next; }
+            }
+        }
+
+        Section {
+            height: 230px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Appearance"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "Theme"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                    GhostButton { text: "Dark"; selected: AppState.settings.theme == 0; clicked => { AppState.set-int("theme", 0); } }
+                    GhostButton { text: "Light"; selected: AppState.settings.theme == 1; clicked => { AppState.set-int("theme", 1); } }
+                    GhostButton { text: "System"; selected: AppState.settings.theme == 2; clicked => { AppState.set-int("theme", 2); } }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "Accent"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                    for c[i] in [#6c8cff, #2fc5a0, #ef6f6c, #f2a93b, #b57cf0, #e77bb5] : Rectangle {
+                        width: 30px; height: 30px; border-radius: 15px; background: c;
+                        border-width: AppState.settings.accent == i ? 3px : 0px; border-color: Theme.text;
+                        TouchArea { clicked => { AppState.set-int("accent", i); } mouse-cursor: pointer; }
+                    }
+                }
+                SpinRow { label: "Day starts at (hour, local time)"; key: "day_start_hour"; value: AppState.settings.day-start-hour; min: 0; max: 12; }
+            }
+        }
+
+        Section {
+            height: 290px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Subjects"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                for s in AppState.subjects : HorizontalLayout {
+                    spacing: 8px; height: 26px;
+                    Rectangle { width: 14px; height: 14px; border-radius: 7px; background: s.color; y: 6px; }
+                    Text { text: s.name; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                    GhostButton { text: "Delete"; height: 24px; clicked => { AppState.delete-subject(s.id); } }
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    subj-name := LineEdit { placeholder-text: "New subject name"; horizontal-stretch: 1; }
+                    for c[i] in [#6c8cff, #2fc5a0, #ef6f6c, #f2a93b, #b57cf0, #e77bb5, #4fb3d9, #9aa5b1] : Rectangle {
+                        width: 26px; height: 26px; border-radius: 13px; background: c; y: 3px;
+                        border-width: root.new-color == i ? 3px : 0px; border-color: Theme.text;
+                        TouchArea { clicked => { root.new-color = i; } mouse-cursor: pointer; }
+                    }
+                    PrimaryButton {
+                        text: "Add";
+                        clicked => {
+                            if (subj-name.text != "") {
+                                AppState.add-subject(subj-name.text, [#6c8cff, #2fc5a0, #ef6f6c, #f2a93b, #b57cf0, #e77bb5, #4fb3d9, #9aa5b1][root.new-color]);
+                                subj-name.text = "";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Section {
+            height: 280px;
+            VerticalLayout {
+                padding: 16px; spacing: 6px;
+                Text { text: "Break tips"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                for t in AppState.tips : HorizontalLayout {
+                    spacing: 8px; height: 24px;
+                    Text { text: t.text; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    GhostButton { text: "✕"; min-width: 30px; height: 22px; clicked => { AppState.delete-tip(t.id); } }
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    tip-in := LineEdit { placeholder-text: "Add a break tip"; horizontal-stretch: 1; }
+                    PrimaryButton { text: "Add"; clicked => { if (tip-in.text != "") { AppState.add-tip(tip-in.text); tip-in.text = ""; } } }
+                }
+            }
+        }
+
+        Section {
+            height: 330px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "System"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                SwitchRow { label: "Desktop notifications at phase end"; key: "notifications"; value: AppState.settings.notifications; }
+                SwitchRow { label: "Play a chime at phase end"; key: "notify_sound"; value: AppState.settings.notify-sound; }
+                SwitchRow { label: "Closing the window minimizes to the tray"; key: "close_to_tray"; value: AppState.settings.close-to-tray; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Global hotkey (start/pause)"; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                    hk := LineEdit { text: AppState.settings.hotkey; width: 150px; accepted(t) => { AppState.set-str("hotkey", t); } }
+                    GhostButton { text: "Apply"; clicked => { AppState.set-str("hotkey", hk.text); } }
+                }
+                Dim { text: AppState.hotkey-status; }
+            }
+        }
+        Rectangle { height: 20px; }
+    }
+}

@@ -1,2 +1,33 @@
 export struct SubjectItem { id: int, name: string, color: color }
-export struct NameValue { name: string, value: string }
+
+export struct TipItem { id: int, text: string }
+
+export struct SettingsData {
+    work-mins: int,
+    short-break-mins: int,
+    long-break-mins: int,
+    cycles-before-long: int,
+    auto-start-next: bool,
+    flow-reminder-mins: int,
+    theme: int,
+    accent: int,
+    daily-goal-mins: int,
+    weekly-goal-mins: int,
+    streak-min-mins: int,
+    day-start-hour: int,
+    new-cards-per-day: int,
+    master-volume: float,
+    sound-during-work: bool,
+    notify-sound: bool,
+    notifications: bool,
+    close-to-tray: bool,
+    autostart: bool,
+    hotkey: string,
+    dnd-during-work: bool,
+    browser-policies: bool,
+    block-steam-client: bool,
+    hard-mode-cooldown-mins: int,
+    emergency-cooldown-mins: int,
+    early-exit-challenge: bool,
+    backup-daily: bool,
+}

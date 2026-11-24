@@ -1,0 +1,102 @@
+import { ComboBox, LineEdit, TextEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Card, Dim, PrimaryButton, GhostButton, Ring } from "components.slint";
+
+component OutcomePanel inherits Rectangle {
+    background: #000000a0;
+    property <int> choice: 0;
+    TouchArea { }
+    Card {
+        width: 440px; height: 320px;
+        VerticalLayout {
+            padding: 20px; spacing: 10px;
+            Text { text: "Session finished"; font-size: 18px; font-weight: 700; color: Theme.text; }
+            Dim { text: AppState.outcome-summary; }
+            Text { text: AppState.outcome-goal == "" ? "No goal was set." : "Goal: " + AppState.outcome-goal; color: Theme.text; wrap: word-wrap; }
+            HorizontalLayout {
+                spacing: 8px;
+                GhostButton { text: "Done"; selected: root.choice == 0; clicked => { root.choice = 0; } }
+                GhostButton { text: "Partly"; selected: root.choice == 1; clicked => { root.choice = 1; } }
+                GhostButton { text: "Not done"; selected: root.choice == 2; clicked => { root.choice = 2; } }
+            }
+            note := LineEdit { placeholder-text: "Optional note"; }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton { text: "Save"; clicked => { AppState.submit-outcome(root.choice, note.text); note.text = ""; root.choice = 0; } }
+            }
+        }
+    }
+}
+
+export component FocusPage inherits Rectangle {
+    HorizontalLayout {
+        spacing: 16px;
+        Card {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                padding: 24px; spacing: 14px; alignment: center;
+                HorizontalLayout {
+                    alignment: center; spacing: 8px;
+                    GhostButton { text: "Pomodoro"; selected: AppState.timer-mode == 0; enabled: !AppState.timer-active; clicked => { AppState.timer-mode = 0; } }
+                    GhostButton { text: "Flow"; selected: AppState.timer-mode == 1; enabled: !AppState.timer-active; clicked => { AppState.timer-mode = 1; } }
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 300px; height: 300px;
+                        Ring {
+                            width: 300px; height: 300px;
+                            progress: AppState.timer-active && AppState.timer-mode == 0 ? AppState.timer-progress : (AppState.timer-active ? 1 : 0);
+                            fill: AppState.timer-is-break ? Theme.ok : Theme.accent;
+                            label: "";
+                            sub: "";
+                        }
+                        VerticalLayout {
+                            alignment: center; spacing: 4px;
+                            Text { text: AppState.timer-text; font-size: 64px; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
+                            Text { text: AppState.phase-label; font-size: 16px; color: AppState.timer-is-break ? Theme.ok : Theme.accent; horizontal-alignment: center; }
+                            Text { text: AppState.session-info; font-size: 12px; color: Theme.text-dim; horizontal-alignment: center; }
+                        }
+                    }
+                }
+                if AppState.timer-is-break && AppState.break-tip != "": Rectangle {
+                    background: Theme.ok.with-alpha(0.15); border-radius: 8px; height: 44px;
+                    Text { text: AppState.break-tip; color: Theme.ok; horizontal-alignment: center; vertical-alignment: center; wrap: word-wrap; }
+                }
+                if AppState.timer-active && AppState.active-goal != "": Text {
+                    text: "Goal: " + AppState.active-goal; color: Theme.text-dim; horizontal-alignment: center; wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: center; spacing: 10px;
+                    if !AppState.timer-active: PrimaryButton { text: "Start"; clicked => { AppState.start-session(AppState.timer-mode, AppState.focus-subject, goal.text); } }
+                    if AppState.timer-active: PrimaryButton {
+                        text: AppState.timer-awaiting ? "Start next" : (AppState.timer-running ? "Pause" : "Resume");
+                        clicked => { AppState.toggle-pause(); }
+                    }
+                    if AppState.timer-active && AppState.timer-mode == 0: GhostButton { text: "Skip"; clicked => { AppState.skip-phase(); } }
+                    if AppState.timer-active: GhostButton { text: "Stop"; clicked => { AppState.stop-session(); } }
+                }
+            }
+        }
+        Card {
+            width: 320px;
+            VerticalLayout {
+                padding: 18px; spacing: 10px;
+                Text { text: "Session"; font-size: 16px; font-weight: 700; color: Theme.text; }
+                Dim { text: "Subject"; }
+                ComboBox {
+                    model: AppState.subject-names;
+                    current-index: AppState.focus-subject;
+                    enabled: !AppState.timer-active;
+                    selected(v) => { AppState.focus-subject = self.current-index; }
+                }
+                Dim { text: "Goal for this session"; }
+                goal := LineEdit { placeholder-text: "e.g. finish chapter 4 exercises"; enabled: !AppState.timer-active; }
+                Rectangle { vertical-stretch: 1; }
+            }
+        }
+    }
+    if AppState.outcome-open: OutcomePanel { }
+}

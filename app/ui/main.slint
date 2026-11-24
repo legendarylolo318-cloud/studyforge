@@ -1,17 +1,22 @@
 import { Theme } from "theme.slint";
-import { NavItem, Heading, Dim, Card, GhostButton } from "components.slint";
-export { Theme }
+import { AppState } from "state.slint";
+import { NavItem, Heading, Dim, Card } from "components.slint";
+import { FocusPage } from "focus.slint";
+import { SettingsPage } from "settings.slint";
+export { Theme, AppState }
 
 export component AppWindow inherits Window {
     title: "StudyForge";
-    min-width: 900px;
-    min-height: 620px;
+    min-width: 960px;
+    min-height: 660px;
     preferred-width: 1100px;
-    preferred-height: 720px;
+    preferred-height: 740px;
     background: Theme.bg;
+    icon: @image-url("../assets/icon.png");
 
     in-out property <int> page: 0;
-    in-out property <string> status-line;
+    callback page-changed(int);
+    callback quit-requested();
 
     HorizontalLayout {
         Rectangle {
@@ -25,10 +30,10 @@ export component AppWindow inherits Window {
                 for name[i] in ["Dashboard", "Focus", "Flashcards", "Notes", "Tasks", "Blocking", "Stats", "Settings"] : NavItem {
                     label: name;
                     active: root.page == i;
-                    clicked => { root.page = i; }
+                    clicked => { root.page = i; root.page-changed(i); }
                 }
                 Rectangle { vertical-stretch: 1; }
-                Dim { text: root.status-line; }
+                Dim { text: AppState.status-line; }
             }
         }
         Rectangle {
@@ -37,7 +42,14 @@ export component AppWindow inherits Window {
                 padding: 24px;
                 spacing: 12px;
                 Heading { text: ["Dashboard", "Focus", "Flashcards", "Notes", "Tasks", "Blocking", "Stats", "Settings"][root.page]; }
-                Card { vertical-stretch: 1; Text { text: "Coming soon"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; } }
+                Rectangle {
+                    vertical-stretch: 1;
+                    if root.page == 1: FocusPage { }
+                    if root.page == 7: SettingsPage { }
+                    if root.page != 1 && root.page != 7: Card {
+                        Text { text: "Coming soon"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                }
             }
         }
     }

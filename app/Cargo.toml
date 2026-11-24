@@ -6,10 +6,24 @@ license.workspace = true
 
 [dependencies]
 anyhow = "1.0.105"
+ashpd = { version = "0.14.3", features = ["global_shortcuts"] }
 chrono = "0.4.45"
+directories = "6.0.0"
+futures-util = "0.3.34"
+global-hotkey = "0.10.0"
+muda = "0.21.2"
+notify-rust = "4.19.0"
+rfd = "0.18.0"
+serde_json = "1.0.154"
 slint = "1.19.1"
+studyforge-core = { version = "0.1.0", path = "../crates/core" }
+tokio = { version = "1.54.1", features = ["rt", "macros", "time"] }
 tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tray-icon = "0.26.1"
 
 [build-dependencies]
 slint-build = "1.19.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"

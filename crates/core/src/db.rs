@@ -228,6 +228,17 @@ impl Db {
         )?;
         Ok(())
     }
+    pub fn set_session_outcome(&self, id: Id, outcome: Option<Outcome>, note: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE sessions SET outcome=?1, note=?2 WHERE id=?3",
+            params![outcome.map(|o| o.as_str()), note, id],
+        )?;
+        Ok(())
+    }
+    pub fn delete_session(&self, id: Id) -> Result<()> {
+        self.conn.execute("DELETE FROM sessions WHERE id=?", [id])?;
+        Ok(())
+    }
     /// Sessions that were left open (crash) get closed with their stored progress.
     pub fn close_dangling_sessions(&self) -> Result<usize> {
         Ok(self.conn.execute(

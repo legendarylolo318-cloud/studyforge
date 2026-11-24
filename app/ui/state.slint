@@ -1,0 +1,53 @@
+import { SubjectItem, TipItem, SettingsData } from "structs.slint";
+
+// Shared state between Rust and the screens. Rust owns the data; the UI only
+// reads properties and invokes callbacks.
+export global AppState {
+    in-out property <string> status-line;
+    in-out property <string> toast;
+    in-out property <string> hotkey-status;
+
+    // ----- timer -----
+    in-out property <string> timer-text: "25:00";
+    in-out property <string> phase-label: "Ready";
+    in-out property <float> timer-progress: 0;
+    in-out property <bool> timer-active: false;
+    in-out property <bool> timer-running: false;
+    in-out property <bool> timer-awaiting: false;
+    in-out property <bool> timer-is-break: false;
+    in-out property <int> timer-mode: 0;           // 0 pomodoro, 1 flow
+    in-out property <string> session-info;
+    in-out property <string> break-tip;
+    in-out property <string> active-goal;
+
+    // ----- subjects -----
+    in-out property <[SubjectItem]> subjects;
+    in-out property <[string]> subject-names: ["No subject"]; // index 0 = none
+    in-out property <int> focus-subject: 0;
+
+    // ----- outcome prompt (after a session) -----
+    in-out property <bool> outcome-open: false;
+    in-out property <string> outcome-goal;
+    in-out property <string> outcome-summary;
+
+    // ----- settings -----
+    in-out property <SettingsData> settings;
+    in-out property <[TipItem]> tips;
+
+    // ----- timer callbacks -----
+    callback start-session(int /*mode*/, int /*subject idx*/, string /*goal*/);
+    callback toggle-pause();
+    callback skip-phase();
+    callback stop-session();
+    callback submit-outcome(int /*0 done 1 partly 2 not*/, string /*note*/);
+
+    // ----- settings callbacks -----
+    callback set-int(string, int);
+    callback set-bool(string, bool);
+    callback set-float(string, float);
+    callback set-str(string, string);
+    callback add-subject(string, color);
+    callback delete-subject(int);
+    callback add-tip(string);
+    callback delete-tip(int);
+}
