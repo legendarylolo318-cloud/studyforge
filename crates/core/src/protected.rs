@@ -103,6 +103,15 @@ pub const PROTECTED_NAMES: &[&str] = &[
     "dllhost",
     "taskhostw",
     "securityhealthservice",
+    // privilege / session plumbing
+    "sudo",
+    "su",
+    "doas",
+    "pkexec",
+    "ssh",
+    "ssh-agent",
+    "gpg-agent",
+    "dbus-launch",
     // ourselves
     "studyd",
     "studyforge",
@@ -117,9 +126,28 @@ pub fn normalize(name: &str) -> String {
     n.strip_suffix(".exe").map(str::to_string).unwrap_or(n)
 }
 
+/// Prefixes of session-critical helpers (systemd-*, portals, polkit agents, ...).
+pub const PROTECTED_PREFIXES: &[&str] = &[
+    "systemd",
+    "xdg-desktop-portal",
+    "xdg-document-portal",
+    "xdg-permission-store",
+    "polkit",
+    "gnome-keyring",
+    "kwalletd",
+    "ksmserver",
+    "kded",
+    "startplasma",
+    "plasma_session",
+    "gsd-",
+    "at-spi",
+    "xwayland",
+    "hyprland",
+];
+
 pub fn is_protected_name(name: &str) -> bool {
     let n = normalize(name);
-    PROTECTED_NAMES.contains(&n.as_str())
+    PROTECTED_NAMES.contains(&n.as_str()) || PROTECTED_PREFIXES.iter().any(|p| n.starts_with(p))
 }
 
 pub fn is_steam_client(name: &str) -> bool {
@@ -169,6 +197,15 @@ mod tests {
             assert!(is_protected_name(n), "{n}");
         }
         assert!(!is_protected_name("discord"));
+        for n in [
+            "systemd-resolved",
+            "xdg-desktop-portal-hyprland",
+            "polkit-kde-authentication-agent-1",
+            "gsd-power",
+            "sudo",
+        ] {
+            assert!(is_protected_name(n), "{n}");
+        }
     }
     #[test]
     fn owner_rules() {

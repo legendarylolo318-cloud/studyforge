@@ -212,6 +212,11 @@ impl<S: ProcessSource> AppBlocker for ProcessBlocker<S> {
             if !steam_client && !protected::may_kill(&cand, &self.rules.allowed_owners) {
                 continue;
             }
+            // The protected list applies to *every* name a process can be matched by
+            // (comm, exe file, argv[0]), not just the kernel's comm name.
+            if Self::names_of(p).iter().any(|n| protected::is_protected_name(n)) {
+                continue;
+            }
             if steam_client {
                 let owner_ok = p.owner.as_deref().is_some_and(|o| {
                     !protected::is_system_owner(o) && self.rules.allowed_owners.iter().any(|a| a == o)
@@ -297,7 +302,8 @@ impl ProcessSource for SysinfoSource {
             .with_cmd(UpdateKind::OnlyIfNotSet)
             .with_user(UpdateKind::OnlyIfNotSet);
         if want_env {
-            kind = kind.with_cwd(UpdateKind::OnlyIfNotSet).with_environ(UpdateKind::Always);
+            // A process's start-up environment never changes: read it once per process.
+            kind = kind.with_cwd(UpdateKind::OnlyIfNotSet).with_environ(UpdateKind::OnlyIfNotSet);
         }
         self.sys.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
         self.sys
@@ -425,6 +431,29 @@ mod tests {
         ];
         let (mut b, _) = setup(procs, rules(&["xorg", "bash", "kwin_wayland", "studyd", "explorer"]));
         assert!(b.scan().is_empty());
+    }
+
+    #[test]
+    fn protected_by_exe_or_argv0_even_if_comm_matches_a_rule() {
+        let mut a = proc(10, "discord", "1000");
+        a.exe = Some(PathBuf::from("/usr/bin/Xwayland"));
+        let mut b = proc(11, "discord", "1000");
+        b.cmd0 = Some("/usr/lib/systemd/systemd-logind".into());
+        let (mut blk, _) = setup(vec![a, b], rules(&["discord"]));
+        assert!(blk.scan().is_empty());
+    }
+
+    #[test]
+    fn steam_detection_survives_unreadable_environment() {
+        // permission denied / exited process: sysinfo yields an empty environment
+        let p = proc(30, "somegame", "1000");
+        let r = AppRules {
+            steam: Some(("G".into(), EnforceMode::Hard)),
+            allowed_owners: vec!["1000".into()],
+            ..Default::default()
+        };
+        let (mut blk, _) = setup(vec![p], r);
+        assert!(blk.scan().is_empty());
     }
 
     #[test]
