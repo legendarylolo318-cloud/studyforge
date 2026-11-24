@@ -131,12 +131,9 @@ pub struct KdeDnd {
 
 #[cfg(target_os = "linux")]
 impl KdeDnd {
-    pub fn new() -> Self {
-        Self {
-            rt: tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime"),
-            conn: None,
-            cookie: None,
-        }
+    pub fn new() -> Option<Self> {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+        Some(Self { rt, conn: None, cookie: None })
     }
 
     fn call(
@@ -204,7 +201,11 @@ pub fn detect() -> Box<dyn Dnd> {
                     return Box::new(g);
                 }
             }
-            Desktop::Kde => return Box::new(KdeDnd::new()),
+            Desktop::Kde => {
+                if let Some(k) = KdeDnd::new() {
+                    return Box::new(k);
+                }
+            }
             Desktop::Other => {}
         }
     }

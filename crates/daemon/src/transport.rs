@@ -142,7 +142,7 @@ pub fn serve(
     {
         use interprocess::os::windows::local_socket::ListenerOptionsExt;
         use interprocess::os::windows::security_descriptor::SecurityDescriptor;
-        let sddl = sddl_for(&allowed.lock().unwrap());
+        let sddl = sddl_for(&allowed.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
         let wide = widestring::U16CString::from_str(&sddl).map_err(io::Error::other)?;
         opts = opts.security_descriptor(SecurityDescriptor::deserialize(&wide)?);
     }
@@ -153,7 +153,7 @@ pub fn serve(
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok(stream) => {
-                if !peer_allowed(&stream, &allowed.lock().unwrap()) {
+                if !peer_allowed(&stream, &allowed.lock().unwrap_or_else(std::sync::PoisonError::into_inner)) {
                     tracing::warn!("rejected connection from a user that is not in allowed_users");
                     continue; // dropping the stream closes it
                 }
@@ -163,10 +163,17 @@ pub fn serve(
                 }
                 let (h, a) = (handler.clone(), active.clone());
                 std::thread::spawn(move || {
+                    // Release the slot even if the handler panics.
+                    struct Slot(Arc<AtomicUsize>);
+                    impl Drop for Slot {
+                        fn drop(&mut self) {
+                            self.0.fetch_sub(1, Ordering::SeqCst);
+                        }
+                    }
+                    let _slot = Slot(a);
                     if let Err(e) = serve_connection(stream, h.as_ref()) {
                         tracing::debug!("connection ended: {e}");
                     }
-                    a.fetch_sub(1, Ordering::SeqCst);
                 });
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(50)),

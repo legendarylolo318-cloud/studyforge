@@ -139,7 +139,7 @@ impl Notifier for DesktopNotifier {
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
-            for uid in self.users.lock().unwrap().iter() {
+            for uid in self.users.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter() {
                 let Ok(n) = uid.parse::<u32>() else { continue };
                 let _ = std::process::Command::new("notify-send")
                     .args(["-a", "StudyForge", summary, body])
@@ -166,13 +166,13 @@ struct Shared(Mutex<RealEngine>);
 
 impl Handler for Shared {
     fn handle(&self, req: Request) -> Response {
-        self.0.lock().unwrap().handle(req, Utc::now())
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).handle(req, Utc::now())
     }
 }
 
 fn steam_commons(users: Arc<Mutex<Vec<String>>>) -> Box<dyn Fn() -> Vec<PathBuf> + Send> {
     Box::new(move || {
-        let ids = users.lock().unwrap().clone();
+        let ids = users.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         #[cfg(unix)]
         {
             let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
@@ -192,7 +192,7 @@ pub fn run_daemon(opts: &Options, stop: Arc<AtomicBool>) -> Result<()> {
     std::fs::create_dir_all(&l.paths.state_dir).with_context(|| format!("creating {}", l.paths.state_dir.display()))?;
     let secured = secure_state_dir(&l.paths.state_dir, opts.sandbox.is_some());
     let users = Arc::new(Mutex::new(allowed_users(&l, opts)));
-    if users.lock().unwrap().is_empty() {
+    if users.lock().unwrap_or_else(std::sync::PoisonError::into_inner).is_empty() {
         tracing::warn!("{} is empty or missing: only root can talk to studyd", l.allowed_users_file.display());
     }
     let sites = SystemSiteBlocker::new(l.paths.clone(), opts.dry_run, SystemCommandRunner);
@@ -201,7 +201,7 @@ pub fn run_daemon(opts: &Options, stop: Arc<AtomicBool>) -> Result<()> {
         state_path: l.state_file.clone(),
         emergency_flag: l.emergency_flag.clone(),
         dry_run: opts.dry_run,
-        allowed_owners: users.lock().unwrap().clone(),
+        allowed_owners: users.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone(),
         honor_emergency_flag: secured,
     };
     let mut engine = Engine::new(
@@ -232,12 +232,12 @@ pub fn run_daemon(opts: &Options, stop: Arc<AtomicBool>) -> Result<()> {
     let mut last_reload = Instant::now();
     while !stop.load(Ordering::Relaxed) {
         std::thread::sleep(TICK);
-        let mut e = shared.0.lock().unwrap();
+        let mut e = shared.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if last_reload.elapsed() > Duration::from_secs(30) {
             last_reload = Instant::now();
             let fresh = allowed_users(&l, opts);
             e.cfg.allowed_owners = fresh.clone();
-            *users.lock().unwrap() = fresh;
+            *users.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = fresh;
         }
         e.tick_with_clock(Utc::now(), Some(crate::engine::boot_clock()));
     }
