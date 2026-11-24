@@ -52,7 +52,10 @@ fn run_service() -> Result<()> {
         ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
         _ => ServiceControlHandlerResult::NotImplemented,
     })?;
-    handle.set_service_status(status(ServiceState::Running, ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN))?;
+    handle.set_service_status(status(
+        ServiceState::Running,
+        ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
+    ))?;
     let opts = OPTIONS.get().cloned().unwrap_or_default();
     let result = daemon::run_daemon(&opts, stop);
     handle.set_service_status(status(ServiceState::Stopped, ServiceControlAccept::empty()))?;
@@ -61,9 +64,14 @@ fn run_service() -> Result<()> {
 
 /// SID of the user running this (elevated) terminal.
 fn current_user_sid() -> Result<String> {
-    let out = std::process::Command::new("whoami").args(["/user", "/fo", "csv", "/nh"]).output().context("running whoami")?;
+    let out =
+        std::process::Command::new("whoami").args(["/user", "/fo", "csv", "/nh"]).output().context("running whoami")?;
     let text = String::from_utf8_lossy(&out.stdout);
-    text.split(',').nth(1).map(|s| s.trim().trim_matches('"').to_string()).filter(|s| s.starts_with("S-1-")).context("could not determine your SID")
+    text.split(',')
+        .nth(1)
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .filter(|s| s.starts_with("S-1-"))
+        .context("could not determine your SID")
 }
 
 pub fn install() -> Result<()> {
@@ -93,7 +101,8 @@ pub fn install() -> Result<()> {
 
 pub fn uninstall() -> Result<()> {
     let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
-    let service = manager.open_service(NAME, ServiceAccess::QUERY_STATUS | ServiceAccess::STOP | ServiceAccess::DELETE)?;
+    let service =
+        manager.open_service(NAME, ServiceAccess::QUERY_STATUS | ServiceAccess::STOP | ServiceAccess::DELETE)?;
     if service.query_status()?.current_state != ServiceState::Stopped {
         let _ = service.stop();
         for _ in 0..50 {

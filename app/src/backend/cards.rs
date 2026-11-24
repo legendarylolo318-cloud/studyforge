@@ -10,12 +10,22 @@ use studyforge_core::srs::{self, CardState, Rating};
 use studyforge_core::stats;
 
 pub struct ReviewSession {
-    pub deck_id: Id,
     pub deck_name: String,
     pub queue: VecDeque<Card>,
     pub current: Option<Card>,
     pub reviewed: u32,
     pub again: u32,
+}
+
+/// Everything the import dialog shows for the current draft.
+struct PreviewData {
+    kind: i32,
+    file: String,
+    info: String,
+    cards: Vec<ImportCard>,
+    raw: Vec<Vec<String>>,
+    cols: usize,
+    opts_view: Option<CsvOptions>,
 }
 
 pub enum ImportDraft {
@@ -48,13 +58,21 @@ impl Backend {
             .map(|s| DeckRow {
                 id: s.deck.id as i32,
                 name: s.deck.name.clone().into(),
-                subject: s.deck.subject_id.and_then(|id| self.subjects.iter().find(|x| x.id == id)).map(|x| x.name.clone()).unwrap_or_default().into(),
+                subject: s
+                    .deck
+                    .subject_id
+                    .and_then(|id| self.subjects.iter().find(|x| x.id == id))
+                    .map(|x| x.name.clone())
+                    .unwrap_or_default()
+                    .into(),
                 total: s.total as i32,
                 due: s.due as i32,
                 new_count: s.new_available as i32,
             })
             .collect();
-        let names: Vec<SharedString> = std::iter::once(SharedString::from("New deck…")).chain(sums.iter().map(|s| SharedString::from(s.deck.name.as_str()))).collect();
+        let names: Vec<SharedString> = std::iter::once(SharedString::from("New deck…"))
+            .chain(sums.iter().map(|s| SharedString::from(s.deck.name.as_str())))
+            .collect();
         let _ = self.ui.upgrade_in_event_loop(move |ui| {
             let st = ui.global::<AppState>();
             st.set_decks(ModelRc::new(VecModel::from(rows)));
@@ -84,11 +102,12 @@ impl Backend {
     // ------------------------------------------------------------ review
     pub(super) fn study_deck(&mut self, id: Id) {
         let name = self.deck_ids().into_iter().find(|d| d.id == id).map(|d| d.name).unwrap_or_default();
-        let queue: VecDeque<Card> = self.db.review_queue(id, self.today_epoch(), self.settings.new_cards_per_day).unwrap_or_default().into();
+        let queue: VecDeque<Card> =
+            self.db.review_queue(id, self.today_epoch(), self.settings.new_cards_per_day).unwrap_or_default().into();
         if queue.is_empty() {
             return;
         }
-        self.review = Some(ReviewSession { deck_id: id, deck_name: name, queue, current: None, reviewed: 0, again: 0 });
+        self.review = Some(ReviewSession { deck_name: name, queue, current: None, reviewed: 0, again: 0 });
         let _ = self.ui.upgrade_in_event_loop(|ui| {
             let st = ui.global::<AppState>();
             st.set_fc_mode(1);
@@ -104,8 +123,16 @@ impl Backend {
         match &r.current {
             Some(c) => {
                 let state = CardState::of(c);
-                let intervals = self.sched.preview(&state, stats::epoch_day(stats::study_day(chrono::Utc::now().timestamp(), &chrono::Local, self.settings.day_start_hour)));
-                let labels: Vec<SharedString> = intervals.iter().map(|d| SharedString::from(srs::fmt_interval(*d))).collect();
+                let intervals = self.sched.preview(
+                    &state,
+                    stats::epoch_day(stats::study_day(
+                        chrono::Utc::now().timestamp(),
+                        &chrono::Local,
+                        self.settings.day_start_hour,
+                    )),
+                );
+                let labels: Vec<SharedString> =
+                    intervals.iter().map(|d| SharedString::from(srs::fmt_interval(*d))).collect();
                 let (f, b, deck) = (c.front.clone(), c.back.clone(), r.deck_name.clone());
                 let _ = self.ui.upgrade_in_event_loop(move |ui| {
                     let st = ui.global::<AppState>();
@@ -194,7 +221,9 @@ impl Backend {
                 .into(),
             })
             .collect();
-        let _ = self.ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_browse_cards(ModelRc::new(VecModel::from(rows))));
+        let _ = self.ui.upgrade_in_event_loop(move |ui| {
+            ui.global::<AppState>().set_browse_cards(ModelRc::new(VecModel::from(rows)))
+        });
     }
 
     pub(super) fn close_browse(&mut self) {
@@ -284,11 +313,24 @@ impl Backend {
 
     fn push_import(&self, opening: bool) {
         let Some(draft) = &self.import else { return };
-        let (kind, file, info, cards, raw, cols, opts_view): (i32, String, String, Vec<ImportCard>, Vec<Vec<String>>, usize, Option<CsvOptions>) = match draft {
+        let PreviewData { kind, file, info, cards, raw, cols, opts_view } = match draft {
             ImportDraft::Csv { file, rows, opts } => {
                 let (cards, skipped) = csv_import::map_rows(rows, opts);
-                let info = format!("{} rows, {} cards will be imported, {} skipped (empty front/back)", rows.len(), cards.len(), skipped);
-                (0, file.clone(), info, cards, rows.iter().take(5).cloned().collect(), csv_import::column_count(rows), Some(opts.clone()))
+                let info = format!(
+                    "{} rows, {} cards will be imported, {} skipped (empty front/back)",
+                    rows.len(),
+                    cards.len(),
+                    skipped
+                );
+                PreviewData {
+                    kind: 0,
+                    file: file.clone(),
+                    info,
+                    cards,
+                    raw: rows.iter().take(5).cloned().collect(),
+                    cols: csv_import::column_count(rows),
+                    opts_view: Some(opts.clone()),
+                }
             }
             ImportDraft::Apkg { file, data } => {
                 let info = format!(
@@ -298,10 +340,19 @@ impl Backend {
                     data.skipped_empty,
                     data.media_skipped
                 );
-                (1, file.clone(), info, data.cards.clone(), vec![], 0, None)
+                PreviewData {
+                    kind: 1,
+                    file: file.clone(),
+                    info,
+                    cards: data.cards.clone(),
+                    raw: vec![],
+                    cols: 0,
+                    opts_view: None,
+                }
             }
         };
-        let preview: Vec<Vec<String>> = cards.iter().take(8).map(|c| vec![short(&c.front, 80), short(&c.back, 80)]).collect();
+        let preview: Vec<Vec<String>> =
+            cards.iter().take(8).map(|c| vec![short(&c.front, 80), short(&c.back, 80)]).collect();
         let _ = self.ui.upgrade_in_event_loop(move |ui| {
             let st = ui.global::<AppState>();
             st.set_import_kind(kind);
@@ -310,12 +361,15 @@ impl Backend {
             st.set_import_error("".into());
             st.set_import_preview(ModelRc::new(VecModel::from(preview.into_iter().map(row).collect::<Vec<_>>())));
             if let Some(o) = opts_view {
-                let col_names: Vec<SharedString> = (0..cols).map(|i| SharedString::from(format!("Column {}", i + 1))).collect();
+                let col_names: Vec<SharedString> =
+                    (0..cols).map(|i| SharedString::from(format!("Column {}", i + 1))).collect();
                 let mut tag_names: Vec<SharedString> = vec!["(none)".into()];
                 tag_names.extend(col_names.iter().cloned());
                 st.set_import_cols(ModelRc::new(VecModel::from(col_names)));
                 st.set_import_tag_cols(ModelRc::new(VecModel::from(tag_names)));
-                st.set_import_raw(ModelRc::new(VecModel::from(raw.into_iter().map(|r| row(r.iter().map(|c| short(c, 40)).collect())).collect::<Vec<_>>())));
+                st.set_import_raw(ModelRc::new(VecModel::from(
+                    raw.into_iter().map(|r| row(r.iter().map(|c| short(c, 40)).collect())).collect::<Vec<_>>(),
+                )));
                 if opening {
                     st.set_import_map_front(o.front_col as i32);
                     st.set_import_map_back(o.back_col as i32);

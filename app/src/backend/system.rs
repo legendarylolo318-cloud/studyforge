@@ -26,10 +26,12 @@ impl Backend {
             .schedules()
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|(id, json)| serde_json::from_str::<ScheduleDef>(&json).ok().map(|mut d| {
-                d.id = id;
-                d
-            }))
+            .filter_map(|(id, json)| {
+                serde_json::from_str::<ScheduleDef>(&json).ok().map(|mut d| {
+                    d.id = id;
+                    d
+                })
+            })
             .collect()
     }
 
@@ -46,7 +48,9 @@ impl Backend {
                 enabled: d.enabled,
             })
             .collect();
-        let _ = self.ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_schedules(ModelRc::new(VecModel::from(items))));
+        let _ = self.ui.upgrade_in_event_loop(move |ui| {
+            ui.global::<AppState>().set_schedules(ModelRc::new(VecModel::from(items)))
+        });
     }
 
     /// Send the resolved rules to studyd (on change, on reconnect, when lists change).
@@ -54,7 +58,12 @@ impl Backend {
         if !self.daemon.connected {
             return;
         }
-        let rules = schedule::resolve_defs(&self.schedule_defs(), &self.blocklists, self.settings.browser_policies, self.settings.block_steam_client);
+        let rules = schedule::resolve_defs(
+            &self.schedule_defs(),
+            &self.blocklists,
+            self.settings.browser_policies,
+            self.settings.block_steam_client,
+        );
         self.link.send(Request::SetSchedules { rules }, "schedules");
     }
 
@@ -70,7 +79,14 @@ impl Backend {
         let (Some(s), Some(e)) = (schedule::parse_hhmm(&start), schedule::parse_hhmm(&end)) else {
             return err(self, "Times must look like 09:00 (24-hour).");
         };
-        let def = ScheduleDef { id: 0, enabled: true, days: (days & 0x7f) as u8, start_min: s, end_min: e, list_ids: vec![list.id] };
+        let def = ScheduleDef {
+            id: 0,
+            enabled: true,
+            days: (days & 0x7f) as u8,
+            start_min: s,
+            end_min: e,
+            list_ids: vec![list.id],
+        };
         if let Ok(json) = serde_json::to_string(&def) {
             let _ = self.db.add_schedule_json(&json);
         }
@@ -99,13 +115,19 @@ impl Backend {
     // ------------------------------------------------------------ hard mode
     pub(super) fn hard_config(&self, mins: i32) -> HardModeConfig {
         let deadline = chrono::Utc::now().timestamp() + mins.clamp(5, 1440) as i64 * 60;
-        HardModeConfig::new(deadline, self.settings.early_exit_challenge, self.settings.hard_mode_cooldown_mins, self.settings.emergency_cooldown_mins)
+        HardModeConfig::new(
+            deadline,
+            self.settings.early_exit_challenge,
+            self.settings.hard_mode_cooldown_mins,
+            self.settings.emergency_cooldown_mins,
+        )
     }
 
     /// Mirror the helper's hard-mode state into the UI and notice when it ends.
     pub(super) fn push_hard(&mut self) {
         let now = chrono::Utc::now().timestamp();
-        let hard = self.daemon.status.as_ref().and_then(|s| s.active.as_ref().and_then(|a: &ActiveInfo| a.hard.clone()));
+        let hard =
+            self.daemon.status.as_ref().and_then(|s| s.active.as_ref().and_then(|a: &ActiveInfo| a.hard.clone()));
         let active = hard.is_some();
         if self.hard_was_active && !active && self.daemon.connected && self.timer.is_active() {
             // The lock ended (deadline, cooldown or emergency unlock): the focus session is over too.
@@ -116,14 +138,20 @@ impl Backend {
             let st = ui.global::<AppState>();
             match hard {
                 Some(h) => {
-                    let until = chrono::DateTime::from_timestamp(h.deadline, 0).map(|t| t.with_timezone(&Local).format("%H:%M").to_string()).unwrap_or_default();
+                    let until = chrono::DateTime::from_timestamp(h.deadline, 0)
+                        .map(|t| t.with_timezone(&Local).format("%H:%M").to_string())
+                        .unwrap_or_default();
                     st.set_hard_active(true);
                     st.set_hard_until(until.into());
                     st.set_hard_left(fmt_secs(h.deadline - now).into());
                     st.set_hard_challenge_enabled(h.challenge_enabled);
                     st.set_hard_challenge(h.challenge.clone().unwrap_or_default().into());
-                    st.set_hard_cooldown(h.exit_cooldown_remaining.map(|r| format!("{} left", fmt_secs(r))).unwrap_or_default().into());
-                    st.set_hard_emergency(h.emergency_remaining.map(|r| format!("{} left", fmt_secs(r))).unwrap_or_default().into());
+                    st.set_hard_cooldown(
+                        h.exit_cooldown_remaining.map(|r| format!("{} left", fmt_secs(r))).unwrap_or_default().into(),
+                    );
+                    st.set_hard_emergency(
+                        h.emergency_remaining.map(|r| format!("{} left", fmt_secs(r))).unwrap_or_default().into(),
+                    );
                     st.set_hard_cooldown_mins(h.exit_cooldown_mins as i32);
                     st.set_hard_emergency_mins(h.emergency_cooldown_mins as i32);
                 }

@@ -32,8 +32,9 @@ pub fn decode(bytes: &[u8]) -> Result<String, ImportError> {
 /// column count over the first lines.
 pub fn sniff_delimiter(text: &str) -> u8 {
     let mut best = (b',', 0usize);
-    for d in [b',', b';', b'\t'] {
-        let mut rdr = csv::ReaderBuilder::new().delimiter(d).has_headers(false).flexible(true).from_reader(text.as_bytes());
+    for d in *b",;\t" {
+        let mut rdr =
+            csv::ReaderBuilder::new().delimiter(d).has_headers(false).flexible(true).from_reader(text.as_bytes());
         let counts: Vec<usize> = rdr.records().take(20).filter_map(|r| r.ok()).map(|r| r.len()).collect();
         if counts.is_empty() {
             continue;
@@ -49,7 +50,8 @@ pub fn sniff_delimiter(text: &str) -> u8 {
 }
 
 pub fn read_rows(text: &str, delimiter: u8) -> Result<Vec<Vec<String>>, ImportError> {
-    let mut rdr = csv::ReaderBuilder::new().delimiter(delimiter).has_headers(false).flexible(true).from_reader(text.as_bytes());
+    let mut rdr =
+        csv::ReaderBuilder::new().delimiter(delimiter).has_headers(false).flexible(true).from_reader(text.as_bytes());
     let mut rows = Vec::new();
     for r in rdr.records() {
         let r = r?;

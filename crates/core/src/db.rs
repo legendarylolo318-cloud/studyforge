@@ -117,7 +117,8 @@ impl Db {
     /// Fold the WAL into the main file (call before the app exits so a synced
     /// data folder holds a single consistent file).
     pub fn checkpoint(&self) -> Result<()> {
-        let _: (i64, i64, i64) = self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        let _: (i64, i64, i64) =
+            self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
         Ok(())
     }
 
@@ -148,10 +149,8 @@ impl Db {
 
     // ---------- settings ----------
     pub fn load_settings(&self) -> Result<Settings> {
-        let v: Option<String> = self
-            .conn
-            .query_row("SELECT value FROM settings WHERE key='app'", [], |r| r.get(0))
-            .optional()?;
+        let v: Option<String> =
+            self.conn.query_row("SELECT value FROM settings WHERE key='app'", [], |r| r.get(0)).optional()?;
         Ok(match v {
             Some(s) => serde_json::from_str::<Settings>(&s).unwrap_or_default().sanitized(),
             None => Settings::default(),
@@ -168,10 +167,7 @@ impl Db {
     }
 
     pub fn get_kv(&self, key: &str) -> Result<Option<String>> {
-        Ok(self
-            .conn
-            .query_row("SELECT value FROM settings WHERE key=?", [key], |r| r.get(0))
-            .optional()?)
+        Ok(self.conn.query_row("SELECT value FROM settings WHERE key=?", [key], |r| r.get(0)).optional()?)
     }
     pub fn set_kv(&self, key: &str, value: &str) -> Result<()> {
         self.conn.execute(
@@ -195,8 +191,7 @@ impl Db {
         Ok(self.conn.last_insert_rowid())
     }
     pub fn update_subject(&self, id: Id, name: &str, color: &str) -> Result<()> {
-        self.conn
-            .execute("UPDATE subjects SET name=?1,color=?2 WHERE id=?3", params![name.trim(), color, id])?;
+        self.conn.execute("UPDATE subjects SET name=?1,color=?2 WHERE id=?3", params![name.trim(), color, id])?;
         Ok(())
     }
     pub fn delete_subject(&self, id: Id) -> Result<()> {
@@ -219,10 +214,8 @@ impl Db {
     }
     /// Update running totals (called periodically and at the end).
     pub fn update_session_progress(&self, id: Id, focus_secs: i64, cycles: i64) -> Result<()> {
-        self.conn.execute(
-            "UPDATE sessions SET focus_secs=?1, cycles=?2 WHERE id=?3",
-            params![focus_secs, cycles, id],
-        )?;
+        self.conn
+            .execute("UPDATE sessions SET focus_secs=?1, cycles=?2 WHERE id=?3", params![focus_secs, cycles, id])?;
         Ok(())
     }
     pub fn finish_session(
@@ -253,10 +246,7 @@ impl Db {
     }
     /// Sessions that were left open (crash) get closed with their stored progress.
     pub fn close_dangling_sessions(&self) -> Result<usize> {
-        Ok(self.conn.execute(
-            "UPDATE sessions SET ended_at = started_at + focus_secs WHERE ended_at IS NULL",
-            [],
-        )?)
+        Ok(self.conn.execute("UPDATE sessions SET ended_at = started_at + focus_secs WHERE ended_at IS NULL", [])?)
     }
     fn session_from(r: &rusqlite::Row) -> rusqlite::Result<Session> {
         let outcome: Option<String> = r.get(4)?;
@@ -292,8 +282,7 @@ impl Db {
 
     // ---------- decks / cards ----------
     pub fn add_deck(&self, name: &str, subject: Option<Id>) -> Result<Id> {
-        self.conn
-            .execute("INSERT INTO decks(name,subject_id) VALUES(?1,?2)", params![name.trim(), subject])?;
+        self.conn.execute("INSERT INTO decks(name,subject_id) VALUES(?1,?2)", params![name.trim(), subject])?;
         Ok(self.conn.last_insert_rowid())
     }
     pub fn delete_deck(&self, id: Id) -> Result<()> {
@@ -318,7 +307,8 @@ impl Db {
                 |r| r.get(0),
             )?;
             let new_total: i64 =
-                self.conn.query_row("SELECT COUNT(*) FROM cards WHERE deck_id=? AND kind='new'", [d.id], |r| r.get(0))?;
+                self.conn
+                    .query_row("SELECT COUNT(*) FROM cards WHERE deck_id=? AND kind='new'", [d.id], |r| r.get(0))?;
             let new_done = self.new_introduced_today(d.id, today_day)?;
             let new_available = new_total.min((new_per_day as i64 - new_done).max(0));
             out.push(DeckSummary { deck: d, total, due, new_available });
@@ -326,11 +316,9 @@ impl Db {
         Ok(out)
     }
     pub fn total_due(&self, today_day: i64) -> Result<i64> {
-        Ok(self.conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE kind!='new' AND due_day<=?",
-            [today_day],
-            |r| r.get(0),
-        )?)
+        Ok(self
+            .conn
+            .query_row("SELECT COUNT(*) FROM cards WHERE kind!='new' AND due_day<=?", [today_day], |r| r.get(0))?)
     }
     fn new_introduced_today(&self, deck_id: Id, today_day: i64) -> Result<i64> {
         Ok(self.conn.query_row(
@@ -468,7 +456,14 @@ impl Db {
     }
 
     // ---------- todos ----------
-    pub fn add_todo(&self, title: &str, subject: Option<Id>, due: Option<&str>, prio: Priority, now: i64) -> Result<Id> {
+    pub fn add_todo(
+        &self,
+        title: &str,
+        subject: Option<Id>,
+        due: Option<&str>,
+        prio: Priority,
+        now: i64,
+    ) -> Result<Id> {
         self.conn.execute(
             "INSERT INTO todos(title,subject_id,due,priority,created_at) VALUES(?1,?2,?3,?4,?5)",
             params![title.trim(), subject, due, prio as i64, now],
@@ -502,7 +497,14 @@ impl Db {
     }
 
     // ---------- distractions ----------
-    pub fn log_distraction(&self, ts: i64, target: &str, kind: DistractionKind, list: &str, action: &str) -> Result<()> {
+    pub fn log_distraction(
+        &self,
+        ts: i64,
+        target: &str,
+        kind: DistractionKind,
+        list: &str,
+        action: &str,
+    ) -> Result<()> {
         self.conn.execute(
             "INSERT INTO distractions(ts,target,kind,list_name,action) VALUES(?1,?2,?3,?4,?5)",
             params![ts, target, if kind == DistractionKind::App { "app" } else { "site" }, list, action],

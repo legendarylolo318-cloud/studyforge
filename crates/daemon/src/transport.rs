@@ -99,7 +99,12 @@ fn serve_connection(stream: Stream, handler: &dyn Handler) -> io::Result<()> {
     Ok(())
 }
 
-pub fn serve(endpoint: &str, allowed: Arc<Mutex<Vec<String>>>, handler: Arc<dyn Handler>, stop: Arc<AtomicBool>) -> io::Result<()> {
+pub fn serve(
+    endpoint: &str,
+    allowed: Arc<Mutex<Vec<String>>>,
+    handler: Arc<dyn Handler>,
+    stop: Arc<AtomicBool>,
+) -> io::Result<()> {
     #[cfg(unix)]
     {
         let p = std::path::Path::new(endpoint);
@@ -164,12 +169,14 @@ pub fn request(endpoint: &str, req: &Request) -> io::Result<Response> {
     let mut reader = BufReader::new(&stream);
     let mut send = &stream;
     send.write_all(encode(&Request::Hello { protocol: PROTOCOL_VERSION, client: "studyd-cli".into() }).as_bytes())?;
-    let hello = read_line_limited(&mut reader)?.ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "no hello"))?;
+    let hello =
+        read_line_limited(&mut reader)?.ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "no hello"))?;
     if let Response::Error { message } = decode::<Response>(&hello).map_err(io::Error::other)? {
         return Err(io::Error::other(message));
     }
     send.write_all(encode(req).as_bytes())?;
-    let line = read_line_limited(&mut reader)?.ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "no response"))?;
+    let line =
+        read_line_limited(&mut reader)?.ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "no response"))?;
     decode(&line).map_err(io::Error::other)
 }
 
@@ -181,7 +188,9 @@ mod tests {
     impl Handler for Echo {
         fn handle(&self, req: Request) -> Response {
             match req {
-                Request::Hello { protocol, .. } if protocol != PROTOCOL_VERSION => Response::Error { message: "mismatch".into() },
+                Request::Hello { protocol, .. } if protocol != PROTOCOL_VERSION => {
+                    Response::Error { message: "mismatch".into() }
+                }
                 Request::Hello { .. } => Response::Hello { protocol: PROTOCOL_VERSION, version: "test".into() },
                 Request::Ping => Response::Pong,
                 _ => Response::Ok,

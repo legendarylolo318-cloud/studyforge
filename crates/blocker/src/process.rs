@@ -213,7 +213,9 @@ impl<S: ProcessSource> AppBlocker for ProcessBlocker<S> {
                 continue;
             }
             if steam_client {
-                let owner_ok = p.owner.as_deref().is_some_and(|o| !protected::is_system_owner(o) && self.rules.allowed_owners.iter().any(|a| a == o));
+                let owner_ok = p.owner.as_deref().is_some_and(|o| {
+                    !protected::is_system_owner(o) && self.rules.allowed_owners.iter().any(|a| a == o)
+                });
                 if !owner_ok || p.pid <= 1 || p.pid == self.self_pid {
                     continue;
                 }
@@ -235,7 +237,11 @@ impl<S: ProcessSource> AppBlocker for ProcessBlocker<S> {
         let cand = Candidate { pid: v.pid, name: &v.name, owner: v.owner.as_deref(), self_pid: self.self_pid };
         let steam_client = v.kind == ViolationKind::SteamClient;
         let allowed = if steam_client {
-            v.owner.as_deref().is_some_and(|o| !protected::is_system_owner(o) && self.rules.allowed_owners.iter().any(|a| a == o)) && v.pid > 1 && v.pid != self.self_pid
+            v.owner
+                .as_deref()
+                .is_some_and(|o| !protected::is_system_owner(o) && self.rules.allowed_owners.iter().any(|a| a == o))
+                && v.pid > 1
+                && v.pid != self.self_pid
         } else {
             protected::may_kill(&cand, &self.rules.allowed_owners)
         };
@@ -251,7 +257,11 @@ impl<S: ProcessSource> AppBlocker for ProcessBlocker<S> {
         }
         let escalate = self.termed.get(&v.pid).is_some_and(|t| t.elapsed() >= Duration::from_millis(1200));
         if escalate || !cfg!(unix) {
-            return if self.source.terminate(v.pid, true) { Outcome::Killed } else { Outcome::Failed("kill failed".into()) };
+            return if self.source.terminate(v.pid, true) {
+                Outcome::Killed
+            } else {
+                Outcome::Failed("kill failed".into())
+            };
         }
         if self.termed.contains_key(&v.pid) {
             return Outcome::Terminating; // wait a bit before escalating
@@ -300,7 +310,11 @@ impl ProcessSource for SysinfoSource {
                 cwd: p.cwd().map(|c| c.to_path_buf()),
                 cmd0: p.cmd().first().map(|c| c.to_string_lossy().into_owned()),
                 owner: p.user_id().map(|u| u.to_string()),
-                environ: if want_env { p.environ().iter().map(|e| e.to_string_lossy().into_owned()).collect() } else { vec![] },
+                environ: if want_env {
+                    p.environ().iter().map(|e| e.to_string_lossy().into_owned()).collect()
+                } else {
+                    vec![]
+                },
                 start_time: p.start_time(),
             })
             .collect()
@@ -349,7 +363,13 @@ mod tests {
     }
 
     fn proc(pid: u32, name: &str, owner: &str) -> ProcInfo {
-        ProcInfo { pid, name: name.into(), owner: Some(owner.into()), start_time: 100 + pid as u64, ..Default::default() }
+        ProcInfo {
+            pid,
+            name: name.into(),
+            owner: Some(owner.into()),
+            start_time: 100 + pid as u64,
+            ..Default::default()
+        }
     }
 
     fn setup(procs: Vec<ProcInfo>, rules: AppRules) -> (ProcessBlocker<Fake>, Rc<RefCell<Table>>) {
@@ -396,7 +416,13 @@ mod tests {
 
     #[test]
     fn protected_names_are_never_candidates_even_if_listed() {
-        let procs = vec![proc(10, "Xorg", "1000"), proc(11, "bash", "1000"), proc(12, "kwin_wayland", "1000"), proc(13, "studyd", "1000"), proc(14, "explorer.exe", "1000")];
+        let procs = vec![
+            proc(10, "Xorg", "1000"),
+            proc(11, "bash", "1000"),
+            proc(12, "kwin_wayland", "1000"),
+            proc(13, "studyd", "1000"),
+            proc(14, "explorer.exe", "1000"),
+        ];
         let (mut b, _) = setup(procs, rules(&["xorg", "bash", "kwin_wayland", "studyd", "explorer"]));
         assert!(b.scan().is_empty());
     }
@@ -424,7 +450,8 @@ mod tests {
             steam_commons: vec![PathBuf::from("/mnt/g/steamapps/common")],
             ..Default::default()
         };
-        let (mut b, _) = setup(vec![game.clone(), proton.clone(), client.clone(), web.clone(), unrelated.clone()], r.clone());
+        let (mut b, _) =
+            setup(vec![game.clone(), proton.clone(), client.clone(), web.clone(), unrelated.clone()], r.clone());
         let v = b.scan();
         assert_eq!(v.iter().map(|v| v.pid).collect::<Vec<_>>(), vec![20, 21]);
         assert!(v.iter().all(|v| v.kind == ViolationKind::SteamGame));
@@ -439,7 +466,12 @@ mod tests {
 
     #[test]
     fn steam_client_is_not_killed_when_owned_by_someone_else() {
-        let r = AppRules { steam: Some(("G".into(), EnforceMode::Hard)), block_steam_client: true, allowed_owners: vec!["1000".into()], ..Default::default() };
+        let r = AppRules {
+            steam: Some(("G".into(), EnforceMode::Hard)),
+            block_steam_client: true,
+            allowed_owners: vec!["1000".into()],
+            ..Default::default()
+        };
         let (mut b, _) = setup(vec![proc(5, "steam", "1001"), proc(6, "steam", "0")], r);
         assert!(b.scan().is_empty());
     }
@@ -470,7 +502,16 @@ mod tests {
     fn enforce_refuses_protected_even_if_handed_a_forged_violation() {
         let (mut b, t) = setup(vec![proc(1, "systemd", "1000"), proc(10, "discord", "0")], rules(&["discord"]));
         for (pid, name, owner) in [(1u32, "systemd", "1000"), (10, "discord", "0"), (11, "bash", "1000")] {
-            let v = Violation { pid, name: name.into(), exe: None, owner: Some(owner.into()), start_time: 0, list: "x".into(), mode: EnforceMode::Hard, kind: ViolationKind::Process };
+            let v = Violation {
+                pid,
+                name: name.into(),
+                exe: None,
+                owner: Some(owner.into()),
+                start_time: 0,
+                list: "x".into(),
+                mode: EnforceMode::Hard,
+                kind: ViolationKind::Process,
+            };
             assert_eq!(b.enforce(&v, Action::Kill), Outcome::Protected);
         }
         assert!(t.borrow().killed.is_empty());

@@ -62,10 +62,12 @@ pub fn render_blocks(md: &str) -> Vec<Block> {
     let flush = |cur: &mut Cur, kind: BlockKind, indent: u8, out: &mut Vec<Block>| {
         let text = std::mem::take(&mut cur.text);
         let total = cur.bold_chars.max(cur.italic_chars) + cur.plain_chars;
-        let all_bold = total > 0 && cur.bold_chars >= total.saturating_sub(0) && cur.plain_chars == 0 && cur.bold_chars > 0;
+        let all_bold =
+            total > 0 && cur.bold_chars >= total.saturating_sub(0) && cur.plain_chars == 0 && cur.bold_chars > 0;
         let all_italic = total > 0 && cur.plain_chars == 0 && cur.italic_chars > 0;
         *cur = Cur::default();
-        let trimmed = if kind == BlockKind::Code { text.trim_end_matches('\n').to_string() } else { text.trim().to_string() };
+        let trimmed =
+            if kind == BlockKind::Code { text.trim_end_matches('\n').to_string() } else { text.trim().to_string() };
         if !trimmed.is_empty() || kind == BlockKind::Rule {
             out.push(Block { kind, text: trimmed, bold: all_bold, italic: all_italic, indent });
         }
@@ -150,8 +152,13 @@ pub fn render_blocks(md: &str) -> Vec<Block> {
             }
             Event::SoftBreak => cur.text.push(' '),
             Event::HardBreak => cur.text.push('\n'),
-            Event::Rule => out.push(Block { kind: BlockKind::Rule, text: String::new(), bold: false, italic: false, indent: 0 }),
-            Event::End(TagEnd::Heading(_)) | Event::End(TagEnd::Paragraph) | Event::End(TagEnd::CodeBlock) | Event::End(TagEnd::Item) => {
+            Event::Rule => {
+                out.push(Block { kind: BlockKind::Rule, text: String::new(), bold: false, italic: false, indent: 0 })
+            }
+            Event::End(TagEnd::Heading(_))
+            | Event::End(TagEnd::Paragraph)
+            | Event::End(TagEnd::CodeBlock)
+            | Event::End(TagEnd::Item) => {
                 if matches!(ev, Event::End(TagEnd::CodeBlock)) {
                     in_code = false;
                 }

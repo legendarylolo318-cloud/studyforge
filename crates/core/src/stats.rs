@@ -151,7 +151,9 @@ pub fn parse_due(input: &str, today: NaiveDate) -> Result<Option<NaiveDate>, Str
             .map(|n| Some(today + Duration::days(n)))
             .ok_or_else(|| format!("Bad day offset '{input}'"));
     }
-    NaiveDate::parse_from_str(&t, "%Y-%m-%d").map(Some).map_err(|_| format!("Use YYYY-MM-DD, today, tomorrow or +N (got '{input}')"))
+    NaiveDate::parse_from_str(&t, "%Y-%m-%d")
+        .map(Some)
+        .map_err(|_| format!("Use YYYY-MM-DD, today, tomorrow or +N (got '{input}')"))
 }
 
 pub fn fmt_hm(secs: i64) -> String {
@@ -199,7 +201,9 @@ mod tests {
     #[test]
     fn day_boundary_uses_start_hour() {
         let tz = FixedOffset::east_opt(0).unwrap();
-        let t = |h, m| DateTime::<Utc>::from_naive_utc_and_offset(d(2025, 3, 11).and_hms_opt(h, m, 0).unwrap(), Utc).timestamp();
+        let t = |h, m| {
+            DateTime::<Utc>::from_naive_utc_and_offset(d(2025, 3, 11).and_hms_opt(h, m, 0).unwrap(), Utc).timestamp()
+        };
         assert_eq!(study_day(t(3, 59), &tz, 4), d(2025, 3, 10));
         assert_eq!(study_day(t(4, 0), &tz, 4), d(2025, 3, 11));
         assert_eq!(study_day(t(0, 0), &tz, 0), d(2025, 3, 11));
@@ -242,7 +246,9 @@ mod tests {
     #[test]
     fn totals_and_subjects() {
         let tz = FixedOffset::east_opt(0).unwrap();
-        let day = |h| DateTime::<Utc>::from_naive_utc_and_offset(d(2025, 3, 11).and_hms_opt(h, 0, 0).unwrap(), Utc).timestamp();
+        let day = |h| {
+            DateTime::<Utc>::from_naive_utc_and_offset(d(2025, 3, 11).and_hms_opt(h, 0, 0).unwrap(), Utc).timestamp()
+        };
         let s = vec![sess(day(10), 600, Some(1)), sess(day(12), 300, Some(1)), sess(day(14), 100, None)];
         let t = daily_totals(&s, &tz, 4);
         assert_eq!(t[&d(2025, 3, 11)], 1000);
@@ -355,7 +361,8 @@ mod tests {
             action: "killed".into(),
         };
         // 23:30 UTC = 00:30 local
-        let base = DateTime::<Utc>::from_naive_utc_and_offset(d(2025, 3, 11).and_hms_opt(23, 30, 0).unwrap(), Utc).timestamp();
+        let base =
+            DateTime::<Utc>::from_naive_utc_and_offset(d(2025, 3, 11).and_hms_opt(23, 30, 0).unwrap(), Utc).timestamp();
         let items = vec![mk(base, "Discord"), mk(base + 60, "discord"), mk(base + 3600, "reddit.com")];
         let h = distractions_by_hour(&items, &tz);
         assert_eq!(h[0], 2);

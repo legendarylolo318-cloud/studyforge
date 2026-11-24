@@ -180,7 +180,12 @@ mod tests {
     fn domains_normalized_deduped_and_allowlist_removed() {
         let spec = BlockSpec {
             lists: vec![
-                list("a", &["Reddit.com", "https://www.reddit.com/x", "1.2.3.4", "youtube.com"], &[], EnforceMode::Hard),
+                list(
+                    "a",
+                    &["Reddit.com", "https://www.reddit.com/x", "1.2.3.4", "youtube.com"],
+                    &[],
+                    EnforceMode::Hard,
+                ),
                 list("b", &["reddit.com", "music.youtube.com"], &[], EnforceMode::Hard),
             ],
             allowlist: Allowlist { enabled: false, domains: vec!["youtube.com".into()], processes: vec![] },
@@ -207,7 +212,11 @@ mod tests {
 
     #[test]
     fn merge_unions_lists_and_allowlists() {
-        let a = BlockSpec { lists: vec![list("a", &["a.com"], &[], EnforceMode::Hard)], browser_policies: true, ..Default::default() };
+        let a = BlockSpec {
+            lists: vec![list("a", &["a.com"], &[], EnforceMode::Hard)],
+            browser_policies: true,
+            ..Default::default()
+        };
         let b = BlockSpec {
             lists: vec![list("b", &["b.com"], &[], EnforceMode::Gentle)],
             allowlist: Allowlist { enabled: true, domains: vec!["wiki.org".into()], processes: vec![] },

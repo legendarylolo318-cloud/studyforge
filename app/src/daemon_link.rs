@@ -48,7 +48,10 @@ pub fn request(endpoint: &str, req: &Request) -> io::Result<Response> {
 
 pub enum LinkMsg {
     /// Execute now; the result comes back as `Cmd::DaemonReply { tag, .. }`.
-    Request { req: Request, tag: &'static str },
+    Request {
+        req: Request,
+        tag: &'static str,
+    },
     Shutdown,
 }
 
@@ -60,7 +63,10 @@ pub struct DaemonLink {
 impl DaemonLink {
     pub fn spawn(endpoint: String, backend: Sender<Cmd>) -> DaemonLink {
         let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::Builder::new().name("daemon-link".into()).spawn(move || run(endpoint, rx, backend)).expect("spawn daemon link");
+        std::thread::Builder::new()
+            .name("daemon-link".into())
+            .spawn(move || run(endpoint, rx, backend))
+            .expect("spawn daemon link");
         DaemonLink { tx }
     }
     pub fn send(&self, req: Request, tag: &'static str) {

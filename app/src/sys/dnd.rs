@@ -1,3 +1,4 @@
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 //! Do Not Disturb during focus phases (best effort, never fatal).
 //!
 //! * GNOME: `gsettings org.gnome.desktop.notifications show-banners` is set to
@@ -30,7 +31,6 @@ pub fn detect_desktop(xdg_current_desktop: &str) -> Desktop {
 pub trait Dnd: Send {
     fn name(&self) -> &'static str;
     fn supported(&self) -> bool;
-    fn is_active(&self) -> bool;
     /// Turn DND on. Returns a restore token to persist (if the method needs one).
     fn enable(&mut self) -> Result<Option<String>, String>;
     fn restore(&mut self) -> Result<(), String>;
@@ -44,9 +44,6 @@ impl Dnd for NoDnd {
         "unsupported"
     }
     fn supported(&self) -> bool {
-        false
-    }
-    fn is_active(&self) -> bool {
         false
     }
     fn enable(&mut self) -> Result<Option<String>, String> {
@@ -69,7 +66,10 @@ pub trait Gsettings: Send {
 pub struct RealGsettings;
 impl Gsettings for RealGsettings {
     fn get(&self) -> Result<String, String> {
-        let out = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.notifications", "show-banners"]).output().map_err(|e| e.to_string())?;
+        let out = std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.notifications", "show-banners"])
+            .output()
+            .map_err(|e| e.to_string())?;
         if !out.status.success() {
             return Err("gsettings failed".into());
         }
@@ -101,9 +101,6 @@ impl<G: Gsettings> Dnd for GnomeDnd<G> {
     }
     fn supported(&self) -> bool {
         self.g.get().is_ok()
-    }
-    fn is_active(&self) -> bool {
-        self.previous.is_some()
     }
     fn enable(&mut self) -> Result<Option<String>, String> {
         if let Some(p) = self.previous {
@@ -142,7 +139,11 @@ impl KdeDnd {
         }
     }
 
-    fn call(&mut self, method: &str, body: &(impl serde::Serialize + zbus::zvariant::DynamicType)) -> Result<zbus::Message, String> {
+    fn call(
+        &mut self,
+        method: &str,
+        body: &(impl serde::Serialize + zbus::zvariant::DynamicType),
+    ) -> Result<zbus::Message, String> {
         let conn = match &self.conn {
             Some(c) => c.clone(),
             None => {
@@ -152,7 +153,13 @@ impl KdeDnd {
             }
         };
         self.rt
-            .block_on(conn.call_method(Some("org.freedesktop.Notifications"), "/org/freedesktop/Notifications", Some("org.freedesktop.Notifications"), method, body))
+            .block_on(conn.call_method(
+                Some("org.freedesktop.Notifications"),
+                "/org/freedesktop/Notifications",
+                Some("org.freedesktop.Notifications"),
+                method,
+                body,
+            ))
             .map_err(|e| e.to_string())
     }
 }
@@ -165,14 +172,11 @@ impl Dnd for KdeDnd {
     fn supported(&self) -> bool {
         true
     }
-    fn is_active(&self) -> bool {
-        self.cookie.is_some()
-    }
     fn enable(&mut self) -> Result<Option<String>, String> {
         if self.cookie.is_some() {
             return Ok(None);
         }
-        let hints: std::collections::HashMap<&str, zbus::zvariant::Value> = std::collections::HashMap::new();
+        let hints: std::collections::HashMap<&str, zbus::Variant> = std::collections::HashMap::new();
         let reply = self.call("Inhibit", &("StudyForge", "Focus session", hints))?;
         let cookie: u32 = reply.body().deserialize().map_err(|e| e.to_string())?;
         self.cookie = Some(cookie);
@@ -253,10 +257,8 @@ mod tests {
         let mut d = GnomeDnd::new(f.clone());
         assert_eq!(d.enable().unwrap().as_deref(), Some("true"));
         assert_eq!(*f.0.lock().unwrap(), "false");
-        assert!(d.is_active());
         d.restore().unwrap();
         assert_eq!(*f.0.lock().unwrap(), "true");
-        assert!(!d.is_active());
     }
 
     #[test]

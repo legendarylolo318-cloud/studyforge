@@ -69,10 +69,7 @@ impl Persisted {
 pub fn load_allowed_users(path: &Path) -> Vec<String> {
     std::fs::read_to_string(path)
         .map(|s| {
-            s.lines()
-                .map(|l| l.split('#').next().unwrap_or("").trim().to_string())
-                .filter(|l| !l.is_empty())
-                .collect()
+            s.lines().map(|l| l.split('#').next().unwrap_or("").trim().to_string()).filter(|l| !l.is_empty()).collect()
         })
         .unwrap_or_default()
 }
@@ -94,8 +91,7 @@ mod tests {
     fn persisted_roundtrip_and_corrupt_file() {
         let d = tempfile::tempdir().unwrap();
         let f = d.path().join("s/state.json");
-        let mut p = Persisted::default();
-        p.next_id = 7;
+        let p = Persisted { next_id: 7, ..Default::default() };
         p.save(&f).unwrap();
         assert_eq!(Persisted::load(&f).next_id, 7);
         std::fs::write(&f, "{ nope").unwrap();

@@ -68,7 +68,13 @@ impl Backend {
     }
 
     pub(super) fn load_selection(&mut self) {
-        self.selected_lists = self.db.get_kv("selected_lists").ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        self.selected_lists = self
+            .db
+            .get_kv("selected_lists")
+            .ok()
+            .flatten()
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
     }
 
     pub(super) fn toggle_list_selected(&mut self, id: Id, on: bool) {
@@ -107,14 +113,30 @@ impl Backend {
     }
 
     pub(super) fn new_list(&mut self) {
-        let b = Blocklist { id: 0, name: "New list".into(), preset_key: None, domains: vec![], processes: vec![], steam_games: false, mode: EnforceMode::Hard };
+        let b = Blocklist {
+            id: 0,
+            name: "New list".into(),
+            preset_key: None,
+            domains: vec![],
+            processes: vec![],
+            steam_games: false,
+            mode: EnforceMode::Hard,
+        };
         if let Ok(id) = self.db.save_blocklist(&b) {
             self.reload_blocklists();
             self.edit_list(id);
         }
     }
 
-    pub(super) fn save_list(&mut self, id: Id, name: String, domains: String, processes: String, steam: bool, mode: i32) {
+    pub(super) fn save_list(
+        &mut self,
+        id: Id,
+        name: String,
+        domains: String,
+        processes: String,
+        steam: bool,
+        mode: i32,
+    ) {
         let Some(existing) = self.blocklists.iter().find(|b| b.id == id).cloned() else { return };
         if existing.preset_key.is_some() {
             return;
@@ -155,7 +177,10 @@ impl Backend {
         self.edit_list(id);
         self.push_schedules_to_daemon();
         if !rejected.is_empty() {
-            let msg = format!("Saved. Ignored (not valid domain names; IP addresses are never blocked): {}", rejected.join(", "));
+            let msg = format!(
+                "Saved. Ignored (not valid domain names; IP addresses are never blocked): {}",
+                rejected.join(", ")
+            );
             let _ = self.ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_edit_error(msg.into()));
         }
     }
@@ -182,7 +207,8 @@ impl Backend {
 
     // ------------------------------------------------------------ spec
     pub(super) fn build_spec(&self, ids: &[Id]) -> BlockSpec {
-        let lists: Vec<BlockList> = self.blocklists.iter().filter(|b| ids.contains(&b.id)).map(BlockList::from).collect();
+        let lists: Vec<BlockList> =
+            self.blocklists.iter().filter(|b| ids.contains(&b.id)).map(BlockList::from).collect();
         let allowlist = studyforge_core::blocking::Allowlist {
             enabled: self.settings.allowlist_mode,
             domains: studyforge_core::presets::normalize_domains(parse_lines(&self.settings.allowlist_domains)),
@@ -231,7 +257,10 @@ impl Backend {
                 let was = self.daemon.connected;
                 self.daemon = DaemonView { connected: true, status: Some(s), error: String::new() };
                 if !was {
-                    tracing::info!("connected to studyd {}", self.daemon.status.as_ref().map(|s| s.version.as_str()).unwrap_or("?"));
+                    tracing::info!(
+                        "connected to studyd {}",
+                        self.daemon.status.as_ref().map(|s| s.version.as_str()).unwrap_or("?")
+                    );
                     self.on_helper_connected();
                 }
             }
@@ -340,7 +369,10 @@ impl Backend {
                 let dash = if s.active.is_some() || !s.schedules_active.is_empty() {
                     let mut v = vec![];
                     if let Some(a) = &s.active {
-                        v.push(format!("Session block: {}", if a.lists.is_empty() { "custom".into() } else { a.lists.join(", ") }));
+                        v.push(format!(
+                            "Session block: {}",
+                            if a.lists.is_empty() { "custom".into() } else { a.lists.join(", ") }
+                        ));
                     }
                     if !s.schedules_active.is_empty() {
                         v.push(format!("Schedule: {}", s.schedules_active.join(", ")));
@@ -351,7 +383,15 @@ impl Backend {
                 };
                 (true, parts.join(" · "), s.warnings.join(" "), dash)
             }
-            _ => (false, String::new(), String::new(), "Blocking helper not installed".to_string()),
+            _ => {
+                // A version mismatch is the one connection failure worth explaining to the user.
+                let detail = if self.daemon.error.contains("protocol mismatch") {
+                    self.daemon.error.clone()
+                } else {
+                    String::new()
+                };
+                (false, String::new(), detail, "Blocking helper not installed".to_string())
+            }
         };
         self.block_status = dash.clone();
         let sidebar = if connected { "Helper: connected" } else { "Helper: not installed" };
@@ -411,10 +451,15 @@ fn try_install_helper() -> String {
         // SAFETY: getuid cannot fail
         let uid = unsafe { libc::getuid() };
         match candidates.into_iter().find(|p| p.exists()) {
-            Some(script) => match std::process::Command::new("pkexec").arg("sh").arg(&script).arg(uid.to_string()).spawn() {
-                Ok(_) => "Approve the authentication prompt to install the helper. This page updates when it is running.".into(),
-                Err(_) => install_note(),
-            },
+            Some(script) => {
+                match std::process::Command::new("pkexec").arg("sh").arg(&script).arg(uid.to_string()).spawn() {
+                    Ok(_) => {
+                        "Approve the authentication prompt to install the helper. This page updates when it is running."
+                            .into()
+                    }
+                    Err(_) => install_note(),
+                }
+            }
             None => install_note(),
         }
     }

@@ -161,7 +161,11 @@ pub fn run_daemon(opts: &Options, stop: Arc<AtomicBool>) -> Result<()> {
         steam_commons(users.clone()),
     );
     engine.reconcile_on_start(Utc::now());
-    tracing::info!("studyd {} started{}", env!("CARGO_PKG_VERSION"), if opts.dry_run { " (DRY RUN: nothing will be modified)" } else { "" });
+    tracing::info!(
+        "studyd {} started{}",
+        env!("CARGO_PKG_VERSION"),
+        if opts.dry_run { " (DRY RUN: nothing will be modified)" } else { "" }
+    );
     let shared = Arc::new(Shared(Mutex::new(engine)));
 
     let server = {
@@ -204,7 +208,10 @@ pub fn emergency_unlock(opts: &Options) -> Result<()> {
     #[cfg(unix)]
     if opts.sandbox.is_none() && !opts.dry_run {
         // SAFETY: geteuid cannot fail
-        anyhow::ensure!(unsafe { libc::geteuid() } == 0, "emergency-unlock must be run as root (sudo studyd emergency-unlock)");
+        anyhow::ensure!(
+            unsafe { libc::geteuid() } == 0,
+            "emergency-unlock must be run as root (sudo studyd emergency-unlock)"
+        );
     }
     std::fs::create_dir_all(&l.paths.state_dir)?;
     // 1. tell a running daemon (it ends the session and lifts schedules on its next tick)
@@ -219,7 +226,9 @@ pub fn emergency_unlock(opts: &Options) -> Result<()> {
     for w in warnings {
         eprintln!("warning: {w}");
     }
-    println!("Emergency unlock done: hard-mode session ended, schedules removed, hosts file and browser policies restored.");
+    println!(
+        "Emergency unlock done: hard-mode session ended, schedules removed, hosts file and browser policies restored."
+    );
     println!("A running studyd will pick this up within a few seconds. Restart your browsers to drop cached policies.");
     Ok(())
 }

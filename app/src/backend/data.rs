@@ -67,7 +67,13 @@ impl Backend {
         };
         let subject = if subject_idx > 0 { self.subjects.get(subject_idx as usize - 1).map(|s| s.id) } else { None };
         let due_s = due.map(|d| d.format("%Y-%m-%d").to_string());
-        if let Err(e) = self.db.add_todo(&title, subject, due_s.as_deref(), Priority::from_i64(prio as i64), chrono::Utc::now().timestamp()) {
+        if let Err(e) = self.db.add_todo(
+            &title,
+            subject,
+            due_s.as_deref(),
+            Priority::from_i64(prio as i64),
+            chrono::Utc::now().timestamp(),
+        ) {
             tracing::error!("add todo: {e}");
         }
         let _ = self.ui.upgrade_in_event_loop(|ui| ui.global::<AppState>().set_task_error("".into()));
@@ -93,7 +99,13 @@ impl Backend {
     pub(super) fn push_todos(&self) {
         let today = self.today();
         let mut all = self.db.todos().unwrap_or_default();
-        let is_overdue = |t: &Todo| !t.done && t.due.as_deref().and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()).is_some_and(|d| d < today);
+        let is_overdue = |t: &Todo| {
+            !t.done
+                && t.due
+                    .as_deref()
+                    .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                    .is_some_and(|d| d < today)
+        };
         all.retain(|t| match self.todo_filter {
             1 => !t.done,
             2 => t.done,
@@ -102,7 +114,7 @@ impl Backend {
         });
         match self.todo_sort {
             1 => all.sort_by(|a, b| a.done.cmp(&b.done).then(b.priority.cmp(&a.priority)).then(a.due.cmp(&b.due))),
-            2 => all.sort_by(|a, b| b.id.cmp(&a.id)),
+            2 => all.sort_by_key(|t| std::cmp::Reverse(t.id)),
             _ => all.sort_by(|a, b| {
                 a.done
                     .cmp(&b.done)
@@ -192,7 +204,11 @@ impl Backend {
         self.flush_note();
         let Ok(Some(n)) = self.db.get_note(id) else { return };
         self.current_note = Some(id);
-        let subj_idx = n.subject_id.and_then(|sid| self.subjects.iter().position(|s| s.id == sid)).map(|i| i as i32 + 1).unwrap_or(0);
+        let subj_idx = n
+            .subject_id
+            .and_then(|sid| self.subjects.iter().position(|s| s.id == sid))
+            .map(|i| i as i32 + 1)
+            .unwrap_or(0);
         let blocks = blocks_to_ui(markdown::render_blocks(&n.body));
         let _ = self.ui.upgrade_in_event_loop(move |ui| {
             let st = ui.global::<AppState>();
@@ -249,7 +265,7 @@ impl Backend {
     fn bars_for_subjects(&self, sessions: &[Session]) -> Vec<BarItem> {
         let by = stats::by_subject(sessions);
         let mut v: Vec<_> = by.into_iter().filter(|(_, s)| *s > 0).collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|x| std::cmp::Reverse(x.1));
         let max = v.first().map(|x| x.1).unwrap_or(1).max(1) as f32;
         v.into_iter()
             .take(8)
@@ -281,7 +297,8 @@ impl Backend {
         } else {
             format!("{} more to extend it today", stats::fmt_hm((min_secs - today_secs).max(60)))
         };
-        let recent: Vec<Session> = sessions.iter().filter(|s| s.started_at >= chrono::Utc::now().timestamp() - 30 * 86400).cloned().collect();
+        let recent: Vec<Session> =
+            sessions.iter().filter(|s| s.started_at >= chrono::Utc::now().timestamp() - 30 * 86400).cloned().collect();
         let bars = self.bars_for_subjects(&recent);
         let mut todos = self.db.todos().unwrap_or_default();
         todos.retain(|t| !t.done && t.due.is_some());
@@ -320,7 +337,11 @@ impl Backend {
         let month = stats::total_in_range(&totals, today - CDuration::days(29), today);
         let all: i64 = totals.values().sum();
         // last 14 days
-        let days: Vec<(NaiveDate, i64)> = (0..14).rev().map(|i| today - CDuration::days(i)).map(|d| (d, totals.get(&d).copied().unwrap_or(0))).collect();
+        let days: Vec<(NaiveDate, i64)> = (0..14)
+            .rev()
+            .map(|i| today - CDuration::days(i))
+            .map(|d| (d, totals.get(&d).copied().unwrap_or(0)))
+            .collect();
         let max = days.iter().map(|d| d.1).max().unwrap_or(1).max(1) as f32;
         let min_secs = self.settings.streak_min_mins as i64 * 60;
         let day_bars: Vec<BarItem> = days
@@ -371,12 +392,22 @@ impl Backend {
         let app_bars: Vec<BarItem> = by_target
             .iter()
             .take(8)
-            .map(|(t, c)| BarItem { label: t.clone().into(), value: *c as f32 / tmax, text: format!("{c}").into(), color: parse_color("#ef6f6c") })
+            .map(|(t, c)| BarItem {
+                label: t.clone().into(),
+                value: *c as f32 / tmax,
+                text: format!("{c}").into(),
+                color: parse_color("#ef6f6c"),
+            })
             .collect();
         let dist_rows: Vec<DistractionRow> = dist
             .iter()
             .take(60)
-            .map(|d| DistractionRow { when: fmt_when(d.ts).into(), target: d.target.clone().into(), list: d.list_name.clone().into(), action: d.action.clone().into() })
+            .map(|d| DistractionRow {
+                when: fmt_when(d.ts).into(),
+                target: d.target.clone().into(),
+                list: d.list_name.clone().into(),
+                action: d.action.clone().into(),
+            })
             .collect();
         let _ = Timelike::hour(&Local::now());
         let (t, w, m, a) = (stats::fmt_hm(today_secs), stats::fmt_hm(week), stats::fmt_hm(month), stats::fmt_hm(all));

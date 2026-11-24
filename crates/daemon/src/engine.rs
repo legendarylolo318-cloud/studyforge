@@ -317,13 +317,32 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
         }
         let id = self.next_id();
         let target = v.display_name();
-        self.state.push_event(DaemonEvent::Overlay { id, ts, target: target.clone(), list: v.list.clone(), goal: goal.to_string() });
-        self.state.push_event(DaemonEvent::Distraction { ts, target: target.clone(), kind: DistractionKind::App, list: v.list.clone(), action: "overlay".into() });
+        self.state.push_event(DaemonEvent::Overlay {
+            id,
+            ts,
+            target: target.clone(),
+            list: v.list.clone(),
+            goal: goal.to_string(),
+        });
+        self.state.push_event(DaemonEvent::Distraction {
+            ts,
+            target: target.clone(),
+            kind: DistractionKind::App,
+            list: v.list.clone(),
+            action: "overlay".into(),
+        });
         if !self.gui_alive(ts) {
-            let body = if goal.is_empty() { format!("{target} is on your block list.") } else { format!("You said you'd study: {goal}. Close {target}?") };
+            let body = if goal.is_empty() {
+                format!("{target} is on your block list.")
+            } else {
+                format!("You said you'd study: {goal}. Close {target}?")
+            };
             self.notifier.notify("StudyForge", &body);
         }
-        self.gentle.insert(v.pid, GentleEntry { start_time: v.start_time, state: Gentle::Pending { id, since: ts }, violation: v });
+        self.gentle.insert(
+            v.pid,
+            GentleEntry { start_time: v.start_time, state: Gentle::Pending { id, since: ts }, violation: v },
+        );
         true
     }
 
@@ -402,7 +421,9 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
         let ts = now.timestamp();
         if let Some(a) = &self.state.active {
             if a.hard.is_some() {
-                return Response::Error { message: "A hard-mode session is already running and cannot be replaced.".into() };
+                return Response::Error {
+                    message: "A hard-mode session is already running and cannot be replaced.".into(),
+                };
             }
         }
         let hard = s.hard.map(|h| {
@@ -414,7 +435,8 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
         if hard.as_ref().is_some_and(|h| h.early_exit_challenge) {
             hard_state.ensure_challenge();
         }
-        self.state.active = Some(ActiveSession { goal: s.goal, started_at: ts, spec: s.spec, hard, hard_state, last_contact: ts });
+        self.state.active =
+            Some(ActiveSession { goal: s.goal, started_at: ts, spec: s.spec, hard, hard_state, last_contact: ts });
         self.gentle.clear();
         self.save();
         self.apply_desired(now, false);
@@ -435,7 +457,11 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
         }
     }
 
-    fn hard_action(&mut self, now: DateTime<Utc>, f: impl FnOnce(&HardModeConfig, &mut HardModeState) -> ExitDecision) -> Response {
+    fn hard_action(
+        &mut self,
+        now: DateTime<Utc>,
+        f: impl FnOnce(&HardModeConfig, &mut HardModeState) -> ExitDecision,
+    ) -> Response {
         let decision = match &mut self.state.active {
             Some(ActiveSession { hard: Some(h), hard_state, .. }) => f(h, hard_state),
             _ => return Response::Error { message: "No hard-mode session is active".into() },
@@ -457,7 +483,12 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
 
     fn overlay_action(&mut self, id: u64, choice: OverlayChoice, now: DateTime<Utc>) -> Response {
         let ts = now.timestamp();
-        let Some(pid) = self.gentle.iter().find(|(_, e)| matches!(e.state, Gentle::Pending { id: i, .. } if i == id)).map(|(p, _)| *p) else {
+        let Some(pid) = self
+            .gentle
+            .iter()
+            .find(|(_, e)| matches!(e.state, Gentle::Pending { id: i, .. } if i == id))
+            .map(|(p, _)| *p)
+        else {
             return Response::Ok; // stale overlay: nothing to do
         };
         let entry = self.gentle.get_mut(&pid).unwrap();
@@ -482,7 +513,13 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
                 "dismissed"
             }
         };
-        self.state.push_event(DaemonEvent::Distraction { ts, target: v.display_name(), kind: DistractionKind::App, list: v.list, action: action.into() });
+        self.state.push_event(DaemonEvent::Distraction {
+            ts,
+            target: v.display_name(),
+            kind: DistractionKind::App,
+            list: v.list,
+            action: action.into(),
+        });
         self.save();
         Response::Ok
     }

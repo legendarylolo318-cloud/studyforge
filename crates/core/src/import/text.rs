@@ -10,7 +10,11 @@ fn decode_entity(e: &str) -> Option<String> {
         "apos" | "#39" => "'".into(),
         _ => {
             let n = e.strip_prefix('#')?;
-            let code = if let Some(h) = n.strip_prefix(['x', 'X']) { u32::from_str_radix(h, 16).ok()? } else { n.parse().ok()? };
+            let code = if let Some(h) = n.strip_prefix(['x', 'X']) {
+                u32::from_str_radix(h, 16).ok()?
+            } else {
+                n.parse().ok()?
+            };
             char::from_u32(code)?.to_string()
         }
     })
@@ -33,11 +37,17 @@ pub fn html_to_text(html: &str) -> String {
                 continue;
             };
             let tag: String = chars[i + 1..i + end].iter().collect();
-            let name = tag.trim_start_matches('/').split(|ch: char| ch.is_whitespace() || ch == '/').next().unwrap_or("").to_lowercase();
+            let name = tag
+                .trim_start_matches('/')
+                .split(|ch: char| ch.is_whitespace() || ch == '/')
+                .next()
+                .unwrap_or("")
+                .to_lowercase();
             i += end + 1;
             match name.as_str() {
-"br" => out.push('\n'),
-                "p" | "div" | "li" | "tr" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "ul" | "ol" | "table" | "blockquote" | "hr" => {
+                "br" => out.push('\n'),
+                "p" | "div" | "li" | "tr" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "ul" | "ol" | "table"
+                | "blockquote" | "hr" => {
                     // opening block tags also separate lines, but avoid piling up newlines
                     if !out.ends_with('\n') && !out.is_empty() {
                         out.push('\n');

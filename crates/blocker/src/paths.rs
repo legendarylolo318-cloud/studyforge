@@ -28,7 +28,8 @@ impl Paths {
     pub fn system() -> Paths {
         #[cfg(windows)]
         {
-            let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+            let root =
+                std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
             let mut firefox = vec![];
             for var in ["ProgramFiles", "ProgramFiles(x86)"] {
                 if let Some(pf) = std::env::var_os(var) {
@@ -85,7 +86,10 @@ impl Paths {
                 root.join("etc/firefox/policies/policies.json"),
                 root.join("usr/lib/firefox/distribution/policies.json"),
             ],
-            chromium_policy_dirs: vec![root.join("etc/chromium/policies/managed"), root.join("etc/opt/chrome/policies/managed")],
+            chromium_policy_dirs: vec![
+                root.join("etc/chromium/policies/managed"),
+                root.join("etc/opt/chrome/policies/managed"),
+            ],
             registry_roots: vec![],
         }
     }

@@ -72,9 +72,8 @@ pub fn logs_dir() -> PathBuf {
 pub fn daemon_state_dir() -> PathBuf {
     #[cfg(windows)]
     {
-        let base = std::env::var_os("ProgramData")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
+        let base =
+            std::env::var_os("ProgramData").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
         base.join("StudyForge")
     }
     #[cfg(not(windows))]

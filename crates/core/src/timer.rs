@@ -84,7 +84,10 @@ pub enum TimerEvent {
     /// A phase began (including the first one).
     PhaseStarted(Phase),
     /// A phase ended. `completed` is false when it was skipped.
-    PhaseEnded { phase: Phase, completed: bool },
+    PhaseEnded {
+        phase: Phase,
+        completed: bool,
+    },
     /// Auto-start is off: `Phase` is queued and waiting for the user.
     AwaitingStart(Phase),
     FlowReminder,
@@ -330,7 +333,7 @@ impl Timer {
         ev.push(TimerEvent::PhaseEnded { phase: ended, completed });
         let next = match ended {
             Phase::Work => {
-                if completed && self.cycles > 0 && self.cycles % self.cfg.cycles_before_long.max(1) == 0 {
+                if completed && self.cycles > 0 && self.cycles.is_multiple_of(self.cfg.cycles_before_long.max(1)) {
                     Phase::LongBreak
                 } else {
                     Phase::ShortBreak

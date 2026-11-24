@@ -31,21 +31,35 @@ pub enum OverlayChoice {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Request {
-    Hello { protocol: u32, client: String },
+    Hello {
+        protocol: u32,
+        client: String,
+    },
     Ping,
     Status,
     StartSession(StartSession),
     /// Refused in hard mode.
     StopSession,
     /// Hard mode: attempt early exit by typing the shown challenge.
-    ExitChallenge { typed: String },
+    ExitChallenge {
+        typed: String,
+    },
     /// Hard mode: start (or cancel) the early-exit cooldown.
-    ExitCooldown { start: bool },
+    ExitCooldown {
+        start: bool,
+    },
     /// Emergency unlock: start (or cancel) its (long) cooldown. Always works.
-    Emergency { start: bool },
-    SetSchedules { rules: Vec<ScheduleRule> },
+    Emergency {
+        start: bool,
+    },
+    SetSchedules {
+        rules: Vec<ScheduleRule>,
+    },
     PollEvents,
-    OverlayAction { id: u64, choice: OverlayChoice },
+    OverlayAction {
+        id: u64,
+        choice: OverlayChoice,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -95,6 +109,7 @@ pub enum DaemonEvent {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)] // short-lived messages; boxing would only complicate every match
 pub enum Response {
     Hello { protocol: u32, version: String },
     Pong,
@@ -126,7 +141,11 @@ mod tests {
         let reqs = vec![
             Request::Hello { protocol: PROTOCOL_VERSION, client: "gui".into() },
             Request::Status,
-            Request::StartSession(StartSession { goal: "g".into(), spec: BlockSpec::default(), hard: Some(HardModeConfig::new(5, true, 20, 60)) }),
+            Request::StartSession(StartSession {
+                goal: "g".into(),
+                spec: BlockSpec::default(),
+                hard: Some(HardModeConfig::new(5, true, 20, 60)),
+            }),
             Request::ExitChallenge { typed: "abc".into() },
             Request::OverlayAction { id: 3, choice: OverlayChoice::FiveMore },
             Request::Emergency { start: true },
@@ -143,8 +162,20 @@ mod tests {
     fn roundtrip_responses_and_events() {
         let r = Response::Events {
             events: vec![
-                DaemonEvent::Distraction { ts: 1, target: "discord".into(), kind: DistractionKind::App, list: "Social".into(), action: "killed".into() },
-                DaemonEvent::Overlay { id: 9, ts: 2, target: "steam game".into(), list: "Gaming".into(), goal: "study".into() },
+                DaemonEvent::Distraction {
+                    ts: 1,
+                    target: "discord".into(),
+                    kind: DistractionKind::App,
+                    list: "Social".into(),
+                    action: "killed".into(),
+                },
+                DaemonEvent::Overlay {
+                    id: 9,
+                    ts: 2,
+                    target: "steam game".into(),
+                    list: "Gaming".into(),
+                    goal: "study".into(),
+                },
             ],
         };
         assert_eq!(decode::<Response>(&encode(&r)).unwrap(), r);

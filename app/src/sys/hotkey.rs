@@ -14,12 +14,19 @@ thread_local! {
     static CURRENT: RefCell<Option<global_hotkey::hotkey::HotKey>> = const { RefCell::new(None) };
 }
 
+#[cfg(target_os = "linux")]
 fn is_wayland() -> bool {
     std::env::var("XDG_SESSION_TYPE").map(|v| v.eq_ignore_ascii_case("wayland")).unwrap_or(false)
         || (std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DISPLAY").is_none())
 }
 
+#[cfg(not(target_os = "linux"))]
+fn is_wayland() -> bool {
+    false
+}
+
 /// Convert "Ctrl+Alt+S" into the portal's trigger syntax ("CTRL+ALT+s").
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn portal_trigger(combo: &str) -> String {
     combo
         .split('+')
@@ -44,6 +51,17 @@ fn parse(combo: &str) -> Result<global_hotkey::hotkey::HotKey, String> {
     cleaned.parse::<global_hotkey::hotkey::HotKey>().map_err(|e| format!("Invalid hotkey '{combo}': {e}"))
 }
 
+#[cfg(not(target_os = "linux"))]
+mod wayland {
+    use super::Trigger;
+    pub fn start(_combo: &str, _trigger: Trigger) -> String {
+        String::new()
+    }
+    pub fn rebind(_combo: &str) -> String {
+        String::new()
+    }
+}
+
 pub struct Hotkeys;
 
 impl Hotkeys {
@@ -56,11 +74,13 @@ impl Hotkeys {
         match global_hotkey::GlobalHotKeyManager::new() {
             Ok(m) => {
                 MANAGER.with(|c| *c.borrow_mut() = Some(m));
-                global_hotkey::GlobalHotKeyEvent::set_event_handler(Some(move |e: global_hotkey::GlobalHotKeyEvent| {
-                    if e.state == global_hotkey::HotKeyState::Pressed {
-                        trigger();
-                    }
-                }));
+                global_hotkey::GlobalHotKeyEvent::set_event_handler(Some(
+                    move |e: global_hotkey::GlobalHotKeyEvent| {
+                        if e.state == global_hotkey::HotKeyState::Pressed {
+                            trigger();
+                        }
+                    },
+                ));
                 Self::rebind(combo)
             }
             Err(e) => format!("Global hotkey unavailable: {e}"),
@@ -95,6 +115,7 @@ impl Hotkeys {
     }
 }
 
+#[cfg(target_os = "linux")]
 mod wayland {
     use super::*;
     use std::sync::{Mutex, OnceLock};
@@ -137,7 +158,8 @@ mod wayland {
         use futures_util::StreamExt;
         let gs = GlobalShortcuts::new().await?;
         let session = gs.create_session(Default::default()).await?;
-        let sc = NewShortcut::new("toggle-timer", "Start or pause the focus timer").preferred_trigger(Some(portal_trigger(combo).as_str()));
+        let sc = NewShortcut::new("toggle-timer", "Start or pause the focus timer")
+            .preferred_trigger(Some(portal_trigger(combo).as_str()));
         gs.bind_shortcuts(&session, &[sc], None, Default::default()).await?;
         *status().lock().unwrap() = format!("Hotkey bound through the desktop portal (preferred: {combo}). Change it in your desktop's shortcut settings.");
         let mut stream = gs.receive_activated().await?;

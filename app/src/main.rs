@@ -1,8 +1,8 @@
 //! StudyForge GUI entry point.
 
 mod audio;
-mod daemon_link;
 mod backend;
+mod daemon_link;
 mod sys;
 
 use backend::{Cmd, Shared};
@@ -17,9 +17,8 @@ fn init_logging() {
     let dir = paths::logs_dir();
     let _ = std::fs::create_dir_all(&dir);
     let file = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("studyforge.log"));
-    let builder = tracing_subscriber::fmt().with_env_filter(
-        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-    );
+    let builder = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()));
     match file {
         Ok(f) => builder.with_ansi(false).with_writer(std::sync::Mutex::new(f)).init(),
         Err(_) => builder.init(),
@@ -29,10 +28,12 @@ fn init_logging() {
 fn pid_alive(pid: u32) -> bool {
     use sysinfo::{Pid, ProcessesToUpdate, System};
     let p = Pid::from_u32(pid);
-    System::new().map(|mut s| {
-        s.refresh_processes(ProcessesToUpdate::Some(&[p]), true);
-        s.process(p).is_some()
-    }).unwrap_or(true) // unknown: assume alive (safer for the data)
+    System::new()
+        .map(|mut s| {
+            s.refresh_processes(ProcessesToUpdate::Some(&[p]), true);
+            s.process(p).is_some()
+        })
+        .unwrap_or(true) // unknown: assume alive (safer for the data)
 }
 
 /// Take the data-folder lock, asking the user when somebody else holds it.
@@ -46,7 +47,11 @@ fn acquire_data_lock(dir: &std::path::Path) -> anyhow::Result<Option<storage::Da
             let when = chrono::DateTime::from_timestamp(info.started, 0)
                 .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_default();
-            let who = if same_host { format!("another StudyForge window on this computer (process {})", info.pid) } else { format!("StudyForge on the computer \"{}\"", info.host) };
+            let who = if same_host {
+                format!("another StudyForge window on this computer (process {})", info.pid)
+            } else {
+                format!("StudyForge on the computer \"{}\"", info.host)
+            };
             let msg = format!("{} has had {} open since {}.", who[..1].to_uppercase() + &who[1..], dir.display(), when);
             let win = LockWindow::new()?;
             win.set_message(msg.into());
@@ -107,6 +112,8 @@ fn main() -> anyhow::Result<()> {
     init_logging();
     #[cfg(unix)]
     install_signal_handlers();
+    // Lets Wayland/X11 shells match the window to studyforge.desktop (icon, taskbar grouping).
+    let _ = slint::set_xdg_app_id("studyforge");
     let data_dir = paths::data_dir();
     std::fs::create_dir_all(&data_dir)?;
     tracing::info!("StudyForge starting, data dir {}", data_dir.display());
@@ -203,7 +210,18 @@ fn main() -> anyhow::Result<()> {
         ui.set_page(p);
         let _ = tx.send(Cmd::PageChanged(p));
     }
-    let handle = backend::spawn(ui.as_weak(), data_dir, rx, tray, shared, hotkey_rebind, tx.clone(), overlay.as_weak());
+    let handle = backend::spawn(
+        backend::Init {
+            ui: ui.as_weak(),
+            data_dir,
+            tray,
+            shared,
+            hotkey_rebind,
+            self_tx: tx.clone(),
+            overlay_win: overlay.as_weak(),
+        },
+        rx,
+    );
     if !(start_minimized && have_tray) {
         ui.show()?;
     }

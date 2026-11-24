@@ -40,7 +40,14 @@ impl CardState {
         CardState { kind: CardKind::New, due_day: 0, interval_days: 0, ease: 2.5, reps: 0, lapses: 0 }
     }
     pub fn of(c: &Card) -> Self {
-        CardState { kind: c.kind, due_day: c.due_day, interval_days: c.interval_days, ease: c.ease, reps: c.reps, lapses: c.lapses }
+        CardState {
+            kind: c.kind,
+            due_day: c.due_day,
+            interval_days: c.interval_days,
+            ease: c.ease,
+            reps: c.reps,
+            lapses: c.lapses,
+        }
     }
     pub fn apply(&self, c: &mut Card) {
         c.kind = self.kind;

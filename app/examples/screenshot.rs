@@ -36,12 +36,36 @@ fn demo(ui: &AppWindow) {
     st.set_subject_names(model(vec!["No subject".into(), "Mathematics".into(), "Biology".into()]));
     st.set_tips(model(vec![TipItem { id: 1, text: "Drink a glass of water.".into() }]));
     st.set_settings(SettingsData {
-        work_mins: 25, short_break_mins: 5, long_break_mins: 15, cycles_before_long: 4, auto_start_next: true,
-        flow_reminder_mins: 0, theme: 0, accent: 0, daily_goal_mins: 240, weekly_goal_mins: 1200, streak_min_mins: 25,
-        day_start_hour: 4, new_cards_per_day: 20, master_volume: 0.8, sound_during_work: false, notify_sound: true,
-        notifications: true, close_to_tray: true, autostart: false, hotkey: "Ctrl+Alt+S".into(), dnd_during_work: false,
-        browser_policies: true, block_steam_client: false, allowlist_mode: false, allowlist_domains: "wikipedia.org\nkhanacademy.org".into(), allowlist_processes: "".into(), hard_mode_cooldown_mins: 20, emergency_cooldown_mins: 60,
-        early_exit_challenge: true, backup_daily: true,
+        work_mins: 25,
+        short_break_mins: 5,
+        long_break_mins: 15,
+        cycles_before_long: 4,
+        auto_start_next: true,
+        flow_reminder_mins: 0,
+        theme: 0,
+        accent: 0,
+        daily_goal_mins: 240,
+        weekly_goal_mins: 1200,
+        streak_min_mins: 25,
+        day_start_hour: 4,
+        new_cards_per_day: 20,
+        master_volume: 0.8,
+        sound_during_work: false,
+        notify_sound: true,
+        notifications: true,
+        close_to_tray: true,
+        autostart: false,
+        hotkey: "Ctrl+Alt+S".into(),
+        dnd_during_work: false,
+        browser_policies: true,
+        block_steam_client: false,
+        allowlist_mode: false,
+        allowlist_domains: "wikipedia.org\nkhanacademy.org".into(),
+        allowlist_processes: "".into(),
+        hard_mode_cooldown_mins: 20,
+        emergency_cooldown_mins: 60,
+        early_exit_challenge: true,
+        backup_daily: true,
     });
     st.set_hotkey_status("Hotkey active: Ctrl+Alt+S".into());
     // dashboard
@@ -56,7 +80,14 @@ fn demo(ui: &AppWindow) {
     st.set_dash_streak_note("Today counts ✓".into());
     st.set_dash_cards_due(34);
     let todo = |id, t: &str, s: &str, due: &str, p, overdue| TodoItem {
-        id, title: t.into(), subject: s.into(), subject_color: c(108, 140, 255), due: due.into(), priority: p, done: false, overdue,
+        id,
+        title: t.into(),
+        subject: s.into(),
+        subject_color: c(108, 140, 255),
+        due: due.into(),
+        priority: p,
+        done: false,
+        overdue,
     };
     let todos = vec![
         todo(1, "Problem set 4", "Mathematics", "Nov 22", 2, true),
@@ -65,7 +96,10 @@ fn demo(ui: &AppWindow) {
     ];
     st.set_next_tasks(model(todos.clone()));
     st.set_todos(model(todos));
-    st.set_stats_subject_bars(model(vec![bar("Mathematics", 1.0, "6h 10m", c(108, 140, 255)), bar("Biology", 0.55, "3h 20m", c(47, 197, 160))]));
+    st.set_stats_subject_bars(model(vec![
+        bar("Mathematics", 1.0, "6h 10m", c(108, 140, 255)),
+        bar("Biology", 0.55, "3h 20m", c(47, 197, 160)),
+    ]));
     // focus
     st.set_timer_text("18:42".into());
     st.set_phase_label("Focus".into());
@@ -80,13 +114,28 @@ fn demo(ui: &AppWindow) {
     ]));
     // notes
     st.set_notes(model(vec![
-        NoteItem { id: 1, title: "Calculus notes".into(), snippet: "Derivatives of trig functions…".into(), subject: "Mathematics".into(), updated: "Nov 24 14:02".into(), selected: true },
-        NoteItem { id: 2, title: "Cell biology".into(), snippet: "Mitochondria are the…".into(), subject: "Biology".into(), updated: "Nov 23 09:12".into(), selected: false },
+        NoteItem {
+            id: 1,
+            title: "Calculus notes".into(),
+            snippet: "Derivatives of trig functions…".into(),
+            subject: "Mathematics".into(),
+            updated: "Nov 24 14:02".into(),
+            selected: true,
+        },
+        NoteItem {
+            id: 2,
+            title: "Cell biology".into(),
+            snippet: "Mitochondria are the…".into(),
+            subject: "Biology".into(),
+            updated: "Nov 23 09:12".into(),
+            selected: false,
+        },
     ]));
     st.set_current_note_id(1);
     st.set_note_title("Calculus notes".into());
     st.set_note_body("# Derivatives\n\nThe **power rule** says d/dx x^n = n x^(n-1).\n\n- sin → cos\n- cos → -sin\n\n```\nf(x) = x^2\n```".into());
-    let mb = |kind, text: &str, level| MdBlock { kind, text: text.into(), level, bold: false, italic: false, indent: 0 };
+    let mb =
+        |kind, text: &str, level| MdBlock { kind, text: text.into(), level, bold: false, italic: false, indent: 0 };
     st.set_note_blocks(model(vec![
         mb(0, "Derivatives", 1),
         mb(1, "The power rule says d/dx x^n = n x^(n-1).", 0),
@@ -100,11 +149,47 @@ fn demo(ui: &AppWindow) {
     st.set_stats_week("9h 40m".into());
     st.set_stats_month("31h 10m".into());
     st.set_stats_all("88h 30m".into());
-    st.set_stats_day_bars(model((1..=14).map(|i| bar(&format!("{i}"), (i % 5 + 1) as f32 / 5.0, &format!("{}m", (i % 5 + 1) * 30), if i % 3 == 0 { c(62, 194, 143) } else { c(108, 140, 255) })).collect()));
-    st.set_stats_hour_bars(model((0..24).map(|h| bar(if h % 3 == 0 { "0" } else { "" }, if (9..18).contains(&h) { 0.6 } else { 0.1 }, "", c(239, 111, 108))).collect()));
-    st.set_stats_app_bars(model(vec![bar("discord", 1.0, "12", c(239, 111, 108)), bar("reddit.com", 0.4, "5", c(239, 111, 108))]));
-    st.set_stats_sessions(model(vec![SessionRow { when: "Nov 24 13:10".into(), subject: "Mathematics".into(), goal: "Finish integration exercises".into(), duration: "50m".into(), outcome: "Done".into() }]));
-    st.set_stats_distractions(model(vec![DistractionRow { when: "Nov 24 13:44".into(), target: "discord".into(), list: "Social Media".into(), action: "killed".into() }]));
+    st.set_stats_day_bars(model(
+        (1..=14)
+            .map(|i| {
+                bar(
+                    &format!("{i}"),
+                    (i % 5 + 1) as f32 / 5.0,
+                    &format!("{}m", (i % 5 + 1) * 30),
+                    if i % 3 == 0 { c(62, 194, 143) } else { c(108, 140, 255) },
+                )
+            })
+            .collect(),
+    ));
+    st.set_stats_hour_bars(model(
+        (0..24)
+            .map(|h| {
+                bar(
+                    if h % 3 == 0 { "0" } else { "" },
+                    if (9..18).contains(&h) { 0.6 } else { 0.1 },
+                    "",
+                    c(239, 111, 108),
+                )
+            })
+            .collect(),
+    ));
+    st.set_stats_app_bars(model(vec![
+        bar("discord", 1.0, "12", c(239, 111, 108)),
+        bar("reddit.com", 0.4, "5", c(239, 111, 108)),
+    ]));
+    st.set_stats_sessions(model(vec![SessionRow {
+        when: "Nov 24 13:10".into(),
+        subject: "Mathematics".into(),
+        goal: "Finish integration exercises".into(),
+        duration: "50m".into(),
+        outcome: "Done".into(),
+    }]));
+    st.set_stats_distractions(model(vec![DistractionRow {
+        when: "Nov 24 13:44".into(),
+        target: "discord".into(),
+        list: "Social Media".into(),
+        action: "killed".into(),
+    }]));
     st.set_decks(model(vec![
         DeckRow { id: 1, name: "Cell biology".into(), subject: "Biology".into(), total: 120, due: 14, new_count: 20 },
         DeckRow { id: 2, name: "Spanish verbs".into(), subject: "".into(), total: 60, due: 0, new_count: 0 },
@@ -122,7 +207,17 @@ fn demo(ui: &AppWindow) {
 }
 
 fn demo_blocking(st: &AppState) {
-    let l = |id, name: &str, preset, d, p, mode, selected, steam, editing| ListItem { id, name: name.into(), preset, domains: d, processes: p, mode, selected, steam, editing };
+    let l = |id, name: &str, preset, d, p, mode, selected, steam, editing| ListItem {
+        id,
+        name: name.into(),
+        preset,
+        domains: d,
+        processes: p,
+        mode,
+        selected,
+        steam,
+        editing,
+    };
     st.set_blocklists(model(vec![
         l(1, "Gaming", true, 98, 12, 0, true, true, false),
         l(2, "News", true, 105, 0, 0, false, false, false),
@@ -136,8 +231,22 @@ fn demo_blocking(st: &AppState) {
     st.set_edit_mode(1);
     st.set_edit_preset(true);
     st.set_schedules(model(vec![
-        ScheduleItem { id: 1, name: "Social Media".into(), days: "Mon–Fri".into(), time: "09:00–17:00".into(), lists: "Social Media".into(), enabled: true },
-        ScheduleItem { id: 2, name: "Gaming".into(), days: "Every day".into(), time: "22:00–02:00".into(), lists: "Gaming".into(), enabled: false },
+        ScheduleItem {
+            id: 1,
+            name: "Social Media".into(),
+            days: "Mon–Fri".into(),
+            time: "09:00–17:00".into(),
+            lists: "Social Media".into(),
+            enabled: true,
+        },
+        ScheduleItem {
+            id: 2,
+            name: "Gaming".into(),
+            days: "Every day".into(),
+            time: "22:00–02:00".into(),
+            lists: "Gaming".into(),
+            enabled: false,
+        },
     ]));
     st.set_list_names(model(vec!["Gaming".into(), "News".into(), "Social Media".into()]));
     st.set_data_dir("/home/me/Sync/StudyForge  (custom)".into());

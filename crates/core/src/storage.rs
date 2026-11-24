@@ -28,7 +28,11 @@ pub struct LockInfo {
 pub enum LockState {
     Acquired(DataLock),
     /// Somebody else holds it. `stale` = safe to take over.
-    HeldByOther { info: LockInfo, stale: bool, same_host: bool },
+    HeldByOther {
+        info: LockInfo,
+        stale: bool,
+        same_host: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -51,7 +55,13 @@ impl DataLock {
     }
 
     /// Fully injectable version (tests).
-    pub fn acquire_as(dir: &Path, host: &str, pid: u32, now: SystemTime, pid_alive: &dyn Fn(u32) -> bool) -> std::io::Result<LockState> {
+    pub fn acquire_as(
+        dir: &Path,
+        host: &str,
+        pid: u32,
+        now: SystemTime,
+        pid_alive: &dyn Fn(u32) -> bool,
+    ) -> std::io::Result<LockState> {
         std::fs::create_dir_all(dir)?;
         let path = dir.join(LOCK_FILE);
         let mine = LockInfo {
@@ -74,13 +84,13 @@ impl DataLock {
             Self::write(&path, &mine)?;
             return Ok(LockState::Acquired(DataLock { path, info: mine }));
         };
-        let age = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|m| now.duration_since(m).ok()).unwrap_or_default();
+        let age = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .unwrap_or_default();
         let same_host = existing.host == host;
-        let stale = if same_host {
-            !pid_alive(existing.pid) || age > STALE_AFTER
-        } else {
-            age > STALE_AFTER
-        };
+        let stale = if same_host { !pid_alive(existing.pid) || age > STALE_AFTER } else { age > STALE_AFTER };
         if same_host && existing.pid == pid {
             // our own leftover (same pid): just take it
             Self::write(&path, &mine)?;
@@ -266,7 +276,9 @@ mod tests {
     #[test]
     fn heartbeat_refreshes_and_keeps_lock_fresh() {
         let d = tempfile::tempdir().unwrap();
-        let LockState::Acquired(l) = DataLock::acquire_as(d.path(), "A", 1, now_real(), &|_| true).unwrap() else { panic!() };
+        let LockState::Acquired(l) = DataLock::acquire_as(d.path(), "A", 1, now_real(), &|_| true).unwrap() else {
+            panic!()
+        };
         l.heartbeat().unwrap();
         let text = std::fs::read_to_string(d.path().join(LOCK_FILE)).unwrap();
         assert_eq!(serde_json::from_str::<LockInfo>(&text).unwrap(), *l.info());
@@ -276,13 +288,18 @@ mod tests {
     fn corrupt_lock_file_is_replaced() {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join(LOCK_FILE), "garbage").unwrap();
-        assert!(matches!(DataLock::acquire_as(d.path(), "A", 1, now_real(), &|_| true).unwrap(), LockState::Acquired(_)));
+        assert!(matches!(
+            DataLock::acquire_as(d.path(), "A", 1, now_real(), &|_| true).unwrap(),
+            LockState::Acquired(_)
+        ));
     }
 
     #[test]
     fn release_does_not_remove_someone_elses_lock() {
         let d = tempfile::tempdir().unwrap();
-        let LockState::Acquired(mine) = DataLock::acquire_as(d.path(), "A", 1, now_real(), &|_| true).unwrap() else { panic!() };
+        let LockState::Acquired(mine) = DataLock::acquire_as(d.path(), "A", 1, now_real(), &|_| true).unwrap() else {
+            panic!()
+        };
         // another instance took over
         let other = LockInfo { host: "B".into(), pid: 2, started: 0 };
         std::fs::write(d.path().join(LOCK_FILE), serde_json::to_string(&other).unwrap()).unwrap();
@@ -293,7 +310,11 @@ mod tests {
     #[test]
     fn take_over_rewrites_lock() {
         let d = tempfile::tempdir().unwrap();
-        std::fs::write(d.path().join(LOCK_FILE), serde_json::to_string(&LockInfo { host: "x".into(), pid: 1, started: 0 }).unwrap()).unwrap();
+        std::fs::write(
+            d.path().join(LOCK_FILE),
+            serde_json::to_string(&LockInfo { host: "x".into(), pid: 1, started: 0 }).unwrap(),
+        )
+        .unwrap();
         let l = DataLock::take_over(d.path()).unwrap();
         assert_eq!(l.info().pid, std::process::id());
         assert_eq!(l.info().host, hostname());
@@ -331,7 +352,11 @@ mod tests {
         std::fs::write(bdir.join("notes.txt"), "keep me").unwrap();
         run_backup(&db, &bdir, d(2025, 3, 11), KEEP_BACKUPS).unwrap();
         assert!(bdir.join("notes.txt").exists());
-        assert!(std::fs::read_dir(&bdir).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".partial")));
+        assert!(std::fs::read_dir(&bdir).unwrap().all(|e| !e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".partial")));
     }
 
     #[test]

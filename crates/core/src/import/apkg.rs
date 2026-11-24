@@ -124,11 +124,7 @@ fn read_notes(conn: &Connection) -> Result<ApkgImport, ImportError> {
         let mut fields = flds.split('\u{1f}');
         let f0 = html_to_text(fields.next().unwrap_or(""));
         let f1 = html_to_text(fields.next().unwrap_or(""));
-        let (front, back) = if has_cloze(&f0) && f1.is_empty() {
-            cloze_to_front_back(&f0)
-        } else {
-            (f0, f1)
-        };
+        let (front, back) = if has_cloze(&f0) && f1.is_empty() { cloze_to_front_back(&f0) } else { (f0, f1) };
         if front.is_empty() || back.is_empty() {
             out.skipped_empty += 1;
             continue;
@@ -187,14 +183,20 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let db = make_collection(d.path(), &sample_notes());
         let z = d.path().join("deck.apkg");
-        write_zip(&z, &[("collection.anki2", db), ("0", b"jpg".to_vec()), ("1", b"mp3".to_vec()), ("media", b"{}".to_vec())]);
+        write_zip(
+            &z,
+            &[("collection.anki2", db), ("0", b"jpg".to_vec()), ("1", b"mp3".to_vec()), ("media", b"{}".to_vec())],
+        );
         let r = read_apkg(&z, &ApkgLimits::default()).unwrap();
         assert_eq!(r.collection, "anki2");
         assert_eq!(r.notes_total, 5);
         assert_eq!(r.media_skipped, 2);
         assert_eq!(r.cards.len(), 3);
         assert_eq!(r.skipped_empty, 2);
-        assert_eq!(r.cards[0], ImportCard { front: "Capital of France?".into(), back: "Paris\n(city)".into(), tags: "geo europe".into() });
+        assert_eq!(
+            r.cards[0],
+            ImportCard { front: "Capital of France?".into(), back: "Paris\n(city)".into(), tags: "geo europe".into() }
+        );
         assert_eq!(r.cards[1].front, "[...] make ATP");
         assert_eq!(r.cards[1].back, "Mitochondria make ATP");
         assert_eq!(r.cards[2].back, "A");
@@ -232,7 +234,15 @@ mod tests {
         std::fs::create_dir(&work).unwrap();
         let db = make_collection(&work, &[("Q\u{1f}A", "")]);
         let z = work.join("deck.apkg");
-        write_zip(&z, &[("../outside/evil.txt", b"pwn".to_vec()), ("../collection.anki2", b"evil".to_vec()), ("collection.anki2", db), ("/abs/evil", b"x".to_vec())]);
+        write_zip(
+            &z,
+            &[
+                ("../outside/evil.txt", b"pwn".to_vec()),
+                ("../collection.anki2", b"evil".to_vec()),
+                ("collection.anki2", db),
+                ("/abs/evil", b"x".to_vec()),
+            ],
+        );
         let r = read_apkg(&z, &ApkgLimits::default()).unwrap();
         assert_eq!(r.cards.len(), 1);
         assert_eq!(r.media_skipped, 0, "unsafe names are not even counted as media");

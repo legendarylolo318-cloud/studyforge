@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=StudyForge
+GenericName=Study timer and flashcards
+Comment=Focus sessions, flashcards, notes, tasks and distraction blocking
+Exec=studyforge
+Icon=studyforge
+Terminal=false
+Categories=Education;Utility;
+Keywords=pomodoro;focus;flashcards;anki;notes;study;
+StartupWMClass=studyforge

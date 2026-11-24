@@ -45,7 +45,11 @@ fn init_logging(to_file: bool) {
         let dir = studyforge_core::paths::daemon_state_dir();
         let _ = std::fs::create_dir_all(&dir);
         if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("studyd.log")) {
-            tracing_subscriber::fmt().with_env_filter(filter).with_ansi(false).with_writer(std::sync::Mutex::new(f)).init();
+            tracing_subscriber::fmt()
+                .with_env_filter(filter)
+                .with_ansi(false)
+                .with_writer(std::sync::Mutex::new(f))
+                .init();
             return;
         }
     }

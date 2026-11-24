@@ -66,7 +66,8 @@ pub struct ScheduleDef {
 
 impl ScheduleDef {
     pub fn list_names(&self, lists: &[crate::models::Blocklist]) -> String {
-        let names: Vec<&str> = self.list_ids.iter().filter_map(|id| lists.iter().find(|l| l.id == *id)).map(|l| l.name.as_str()).collect();
+        let names: Vec<&str> =
+            self.list_ids.iter().filter_map(|id| lists.iter().find(|l| l.id == *id)).map(|l| l.name.as_str()).collect();
         if names.is_empty() {
             "(deleted list)".into()
         } else {
@@ -78,7 +79,12 @@ impl ScheduleDef {
     }
 }
 
-pub fn resolve_defs(defs: &[ScheduleDef], lists: &[crate::models::Blocklist], browser_policies: bool, block_steam_client: bool) -> Vec<ScheduleRule> {
+pub fn resolve_defs(
+    defs: &[ScheduleDef],
+    lists: &[crate::models::Blocklist],
+    browser_policies: bool,
+    block_steam_client: bool,
+) -> Vec<ScheduleRule> {
     defs.iter()
         .map(|d| {
             let chosen: Vec<crate::blocking::BlockList> =
@@ -240,16 +246,25 @@ mod tests {
     #[test]
     fn defs_resolve_against_current_lists() {
         use crate::models::{Blocklist, EnforceMode};
-        let lists = vec![Blocklist { id: 3, name: "Social".into(), preset_key: None, domains: vec!["a.com".into()], processes: vec!["x".into()], steam_games: false, mode: EnforceMode::Gentle }];
-        let def = ScheduleDef { id: 1, enabled: true, days: WEEKDAYS, start_min: 540, end_min: 1020, list_ids: vec![3] };
-        let rules = resolve_defs(&[def.clone()], &lists, true, false);
+        let lists = vec![Blocklist {
+            id: 3,
+            name: "Social".into(),
+            preset_key: None,
+            domains: vec!["a.com".into()],
+            processes: vec!["x".into()],
+            steam_games: false,
+            mode: EnforceMode::Gentle,
+        }];
+        let def =
+            ScheduleDef { id: 1, enabled: true, days: WEEKDAYS, start_min: 540, end_min: 1020, list_ids: vec![3] };
+        let rules = resolve_defs(std::slice::from_ref(&def), &lists, true, false);
         assert_eq!(rules[0].name, "Social · Mon–Fri 09:00–17:00");
         assert!(rules[0].enabled && rules[0].spec.browser_policies);
         assert_eq!(rules[0].spec.lists[0].mode, EnforceMode::Gentle);
         // editing the list is reflected
         let mut lists2 = lists.clone();
         lists2[0].domains.push("b.com".into());
-        assert_eq!(resolve_defs(&[def.clone()], &lists2, true, false)[0].spec.lists[0].domains.len(), 2);
+        assert_eq!(resolve_defs(std::slice::from_ref(&def), &lists2, true, false)[0].spec.lists[0].domains.len(), 2);
         // deleted list -> rule disabled instead of silently blocking nothing / everything
         let none = resolve_defs(&[def], &[], true, false);
         assert!(!none[0].enabled);

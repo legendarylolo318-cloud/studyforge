@@ -5,7 +5,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = "1.0.105"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 studyforge-core = { version = "0.1.0", path = "../core" }

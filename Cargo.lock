@@ -5718,7 +5718,6 @@ dependencies = [
  "ashpd",
  "auto-launch",
  "chrono",
- "directories",
  "futures-util",
  "global-hotkey",
  "gtk",
@@ -5747,7 +5746,6 @@ dependencies = [
 name = "studyforge-blocker"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "serde",
  "serde_json",
  "studyforge-core",
@@ -5762,7 +5760,6 @@ dependencies = [
 name = "studyforge-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
  "chrono-tz",
  "csv",
@@ -5776,7 +5773,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
- "tracing",
  "zip",
  "zstd",
 ]

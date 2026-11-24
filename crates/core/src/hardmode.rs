@@ -24,7 +24,12 @@ pub struct HardModeConfig {
 }
 
 impl HardModeConfig {
-    pub fn new(deadline: i64, early_exit_challenge: bool, exit_cooldown_mins: u32, emergency_cooldown_mins: u32) -> Self {
+    pub fn new(
+        deadline: i64,
+        early_exit_challenge: bool,
+        exit_cooldown_mins: u32,
+        emergency_cooldown_mins: u32,
+    ) -> Self {
         Self {
             deadline,
             early_exit_challenge,

@@ -242,13 +242,17 @@ mod tests {
         let extra = d.path().join("lib2");
         std::fs::write(
             root.join("steamapps/libraryfolders.vdf"),
-            format!("\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} \"1\" {{ \"path\" \"{}\" }} }}", root.display(), extra.display()),
+            format!(
+                "\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} \"1\" {{ \"path\" \"{}\" }} }}",
+                root.display().to_string().replace('\\', "\\\\"),
+                extra.display().to_string().replace('\\', "\\\\")
+            ),
         )
         .unwrap();
         // flatpak root as well
         let fp = home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam");
         std::fs::create_dir_all(&fp).unwrap();
-        let roots = linux_roots(&[home.clone()]);
+        let roots = linux_roots(std::slice::from_ref(&home));
         assert_eq!(roots.len(), 2);
         let commons = common_dirs(&roots);
         assert!(commons.contains(&root.join("steamapps/common")));

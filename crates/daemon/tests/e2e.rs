@@ -64,7 +64,9 @@ fn full_session_lifecycle_in_sandbox() {
     };
     wait_for("socket", 10, || std::path::Path::new(&l.endpoint).exists());
 
-    assert!(matches!(request(&l.endpoint, &Request::Status).unwrap(), Response::Status(s) if s.active.is_none() && !s.hosts_applied));
+    assert!(
+        matches!(request(&l.endpoint, &Request::Status).unwrap(), Response::Status(s) if s.active.is_none() && !s.hosts_applied)
+    );
 
     // ---- soft session: hosts + policies + process kill ----
     let mut victim = spawn_victim(&sb, "e2evictimproc");
@@ -92,13 +94,21 @@ fn full_session_lifecycle_in_sandbox() {
 
     // ---- hard mode: cannot stop; emergency unlock always works ----
     let hard = HardModeConfig::new(chrono::Utc::now().timestamp() + 3600, true, 20, 60);
-    let r = request(&l.endpoint, &Request::StartSession(StartSession { goal: "locked".into(), spec: spec("e2enothing"), hard: Some(hard) })).unwrap();
+    let r = request(
+        &l.endpoint,
+        &Request::StartSession(StartSession { goal: "locked".into(), spec: spec("e2enothing"), hard: Some(hard) }),
+    )
+    .unwrap();
     assert_eq!(r, Response::Ok);
     assert!(matches!(request(&l.endpoint, &Request::StopSession).unwrap(), Response::Error { .. }));
     assert!(std::fs::read_to_string(sb.join("etc/hosts")).unwrap().contains("e2e-blocked"));
 
     daemon::emergency_unlock(&opts).unwrap(); // the root/admin CLI escape
-    wait_for("daemon to notice the emergency unlock", 8, || matches!(request(&l.endpoint, &Request::Status), Ok(Response::Status(s)) if s.active.is_none()));
+    wait_for(
+        "daemon to notice the emergency unlock",
+        8,
+        || matches!(request(&l.endpoint, &Request::Status), Ok(Response::Status(s)) if s.active.is_none()),
+    );
     assert_eq!(std::fs::read_to_string(sb.join("etc/hosts")).unwrap(), original_hosts);
 
     stop.store(true, Ordering::Relaxed);
@@ -123,7 +133,11 @@ fn hard_session_survives_daemon_restart() {
     let h1 = run(stop1.clone());
     wait_for("socket", 10, || std::path::Path::new(&l.endpoint).exists());
     let hard = HardModeConfig::new(chrono::Utc::now().timestamp() + 3600, true, 20, 60);
-    request(&l.endpoint, &Request::StartSession(StartSession { goal: "locked".into(), spec: spec("nothing-x"), hard: Some(hard) })).unwrap();
+    request(
+        &l.endpoint,
+        &Request::StartSession(StartSession { goal: "locked".into(), spec: spec("nothing-x"), hard: Some(hard) }),
+    )
+    .unwrap();
     stop1.store(true, Ordering::Relaxed);
     h1.join().unwrap();
 

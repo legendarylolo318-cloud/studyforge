@@ -45,7 +45,11 @@ pub struct PolicySpec {
 
 impl PolicySpec {
     pub fn from_spec(spec: &BlockSpec) -> PolicySpec {
-        PolicySpec { blocked: spec.blocked_domains(), allowlist: spec.allowlist.enabled, allowed: spec.allowed_domains() }
+        PolicySpec {
+            blocked: spec.blocked_domains(),
+            allowlist: spec.allowlist.enabled,
+            allowed: spec.allowed_domains(),
+        }
     }
     pub fn is_empty(&self) -> bool {
         self.blocked.is_empty() && !self.allowlist
@@ -156,7 +160,9 @@ fn read_json_object(path: &Path) -> Result<Option<Map<String, Value>>, PolicyErr
         Ok(s) if s.trim().is_empty() => Ok(Some(Map::new())),
         Ok(s) => match serde_json::from_str::<Value>(&s) {
             Ok(Value::Object(m)) => Ok(Some(m)),
-            Ok(_) | Err(_) => Err(PolicyError::Other(format!("{} is not a JSON object; leaving it untouched", path.display()))),
+            Ok(_) | Err(_) => {
+                Err(PolicyError::Other(format!("{} is not a JSON object; leaving it untouched", path.display())))
+            }
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(io(path)(e)),
@@ -164,7 +170,9 @@ fn read_json_object(path: &Path) -> Result<Option<Map<String, Value>>, PolicyErr
 }
 
 fn str_array(v: Option<&Value>) -> Vec<String> {
-    v.and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
+    v.and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .unwrap_or_default()
 }
 
 fn write_json(path: &Path, v: &Value, dry: bool) -> Result<(), PolicyError> {
@@ -195,7 +203,10 @@ fn write_json(path: &Path, v: &Value, dry: bool) -> Result<(), PolicyError> {
 fn firefox_revert(doc: &mut Map<String, Value>, rec: &FileRecord) {
     let Some(Value::Object(policies)) = doc.get_mut("policies") else { return };
     if let Some(Value::Object(wf)) = policies.get_mut("WebsiteFilter") {
-        for (key, added, had) in [("Block", &rec.added_block, rec.had_block_key), ("Exceptions", &rec.added_exceptions, rec.had_exceptions_key)] {
+        for (key, added, had) in [
+            ("Block", &rec.added_block, rec.had_block_key),
+            ("Exceptions", &rec.added_exceptions, rec.had_exceptions_key),
+        ] {
             if let Some(Value::Array(arr)) = wf.get_mut(key) {
                 arr.retain(|x| x.as_str().is_none_or(|s| !added.iter().any(|a| a == s)));
                 if arr.is_empty() && !had {
@@ -234,7 +245,8 @@ pub fn firefox_apply(path: &Path, spec: &PolicySpec, state: &mut PolicyState, dr
 
     if spec.is_empty() {
         // finish removal
-        let empty = doc.get("policies").and_then(|p| p.as_object()).is_none_or(|p| p.is_empty()) && doc.keys().all(|k| k == "policies");
+        let empty = doc.get("policies").and_then(|p| p.as_object()).is_none_or(|p| p.is_empty())
+            && doc.keys().all(|k| k == "policies");
         if prev.is_some() {
             if empty && created_before && file_existed {
                 if dry {
@@ -291,7 +303,10 @@ pub fn firefox_apply(path: &Path, spec: &PolicySpec, state: &mut PolicyState, dr
     };
     rec.had_block_key = wf.contains_key("Block");
     rec.had_exceptions_key = wf.contains_key("Exceptions");
-    for (k, ours, added) in [("Block", spec.firefox_block(), &mut rec.added_block), ("Exceptions", spec.firefox_exceptions(), &mut rec.added_exceptions)] {
+    for (k, ours, added) in [
+        ("Block", spec.firefox_block(), &mut rec.added_block),
+        ("Exceptions", spec.firefox_exceptions(), &mut rec.added_exceptions),
+    ] {
         if ours.is_empty() {
             continue;
         }
@@ -403,7 +418,12 @@ fn next_index(existing: &[(String, String)]) -> u32 {
     existing.iter().filter_map(|(n, _)| n.parse::<u32>().ok()).max().unwrap_or(0) + 1
 }
 
-pub fn registry_apply<R: Registry>(reg: &mut R, root: &str, spec: &PolicySpec, state: &mut PolicyState) -> std::io::Result<()> {
+pub fn registry_apply<R: Registry>(
+    reg: &mut R,
+    root: &str,
+    spec: &PolicySpec,
+    state: &mut PolicyState,
+) -> std::io::Result<()> {
     let block_key = format!(r"{root}\URLBlocklist");
     let allow_key = format!(r"{root}\URLAllowlist");
     let prev = state.registry.get(root).cloned();
@@ -431,7 +451,10 @@ pub fn registry_apply<R: Registry>(reg: &mut R, root: &str, spec: &PolicySpec, s
     }
 
     let mut rec = RegRecord::default();
-    for (key, entries, added) in [(&block_key, spec.chromium_block(), &mut rec.added_block), (&allow_key, spec.chromium_allow(), &mut rec.added_allow)] {
+    for (key, entries, added) in [
+        (&block_key, spec.chromium_block(), &mut rec.added_block),
+        (&allow_key, spec.chromium_allow(), &mut rec.added_allow),
+    ] {
         let mut existing = reg.values(key);
         for e in entries {
             if existing.iter().any(|(_, v)| *v == e) {
@@ -465,7 +488,14 @@ pub mod winreg_backend {
         fn values(&self, key: &str) -> Vec<(String, String)> {
             hklm()
                 .open_subkey(key)
-                .map(|k| k.enum_values().filter_map(|r| r.ok()).filter_map(|(n, v)| k.get_value::<String, _>(&n).ok().map(|s| (n, s)).filter(|_| v.vtype == REG_SZ)).collect())
+                .map(|k| {
+                    k.enum_values()
+                        .filter_map(|r| r.ok())
+                        .filter_map(|(n, v)| {
+                            k.get_value::<String, _>(&n).ok().map(|s| (n, s)).filter(|_| v.vtype == REG_SZ)
+                        })
+                        .collect()
+                })
                 .unwrap_or_default()
         }
         fn get(&self, key: &str, name: &str) -> Option<String> {
@@ -594,7 +624,10 @@ mod tests {
         assert_eq!(v["policies"]["DNSOverHTTPS"]["Locked"], json!(true));
         // changing the spec swaps our entries without duplicating
         firefox_apply(&ff, &spec(&["b.com"]), &mut st, false).unwrap();
-        assert_eq!(read(&ff)["policies"]["WebsiteFilter"]["Block"], json!(["*://*.userblocked.com/*", "*://*.b.com/*"]));
+        assert_eq!(
+            read(&ff)["policies"]["WebsiteFilter"]["Block"],
+            json!(["*://*.userblocked.com/*", "*://*.b.com/*"])
+        );
         // removal restores the user's file exactly
         firefox_apply(&ff, &PolicySpec::default(), &mut st, false).unwrap();
         assert_eq!(read(&ff), user);
@@ -654,7 +687,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("managed");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("corp.json"), json!({"URLBlocklist": ["corp-blocked.com"], "HomepageLocation": "x"}).to_string()).unwrap();
+        std::fs::write(
+            dir.join("corp.json"),
+            json!({"URLBlocklist": ["corp-blocked.com"], "HomepageLocation": "x"}).to_string(),
+        )
+        .unwrap();
         let mut st = PolicyState::default();
         chromium_apply(&dir, &spec(&["a.com", "b.com"]), &mut st, false).unwrap();
         let v = read(&dir.join(CHROMIUM_FILE));
@@ -744,7 +781,11 @@ mod tests {
             Ok(())
         }
         fn delete_value(&mut self, key: &str, name: &str) -> std::io::Result<()> {
-            self.0.get_mut(key).and_then(|m| m.remove(name)).map(|_| ()).ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))
+            self.0
+                .get_mut(key)
+                .and_then(|m| m.remove(name))
+                .map(|_| ())
+                .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))
         }
         fn delete_key_if_empty(&mut self, key: &str) {
             if self.0.get(key).is_some_and(|m| m.is_empty()) {

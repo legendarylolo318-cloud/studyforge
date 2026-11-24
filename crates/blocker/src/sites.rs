@@ -91,7 +91,10 @@ impl<R: CommandRunner> SystemSiteBlocker<R> {
         let now = policies::is_applied(&self.paths);
         report.changed |= was != now || (now && !self.dry_run);
         if spec.allowlist.enabled && !spec.browser_policies {
-            report.warnings.push("Website allowlisting needs browser policies; they are turned off, so websites are not restricted.".into());
+            report.warnings.push(
+                "Website allowlisting needs browser policies; they are turned off, so websites are not restricted."
+                    .into(),
+            );
         }
         if report.changed {
             self.flush();
@@ -138,7 +141,13 @@ mod tests {
 
     fn spec(domains: &[&str], policies: bool) -> BlockSpec {
         BlockSpec {
-            lists: vec![BlockList { name: "L".into(), domains: domains.iter().map(|s| s.to_string()).collect(), processes: vec![], steam_games: false, mode: EnforceMode::Hard }],
+            lists: vec![BlockList {
+                name: "L".into(),
+                domains: domains.iter().map(|s| s.to_string()).collect(),
+                processes: vec![],
+                steam_games: false,
+                mode: EnforceMode::Hard,
+            }],
             browser_policies: policies,
             ..Default::default()
         }

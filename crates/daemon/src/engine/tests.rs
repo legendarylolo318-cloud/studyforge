@@ -88,7 +88,14 @@ fn rig_in(dir: tempfile::TempDir) -> Rig {
         dry_run: false,
         allowed_owners: vec!["1000".into()],
     };
-    let engine = Engine::new(cfg, sites.clone(), apps.clone(), notes.clone(), Box::new(|t| t.fixed_offset()), Box::new(Vec::new));
+    let engine = Engine::new(
+        cfg,
+        sites.clone(),
+        apps.clone(),
+        notes.clone(),
+        Box::new(|t| t.fixed_offset()),
+        Box::new(Vec::new),
+    );
     Rig { engine, sites, apps, notes, dir }
 }
 fn rig() -> Rig {
@@ -102,7 +109,13 @@ const T0: i64 = 1_700_000_000;
 
 fn spec(mode: EnforceMode) -> BlockSpec {
     BlockSpec {
-        lists: vec![BlockList { name: "Social".into(), domains: vec!["reddit.com".into()], processes: vec!["discord".into()], steam_games: false, mode }],
+        lists: vec![BlockList {
+            name: "Social".into(),
+            domains: vec!["reddit.com".into()],
+            processes: vec!["discord".into()],
+            steam_games: false,
+            mode,
+        }],
         browser_policies: true,
         ..Default::default()
     }
@@ -135,8 +148,14 @@ fn events(r: &mut Rig, secs: i64) -> Vec<DaemonEvent> {
 #[test]
 fn handshake_checks_protocol_version() {
     let mut r = rig();
-    assert!(matches!(r.engine.handle(Request::Hello { protocol: PROTOCOL_VERSION, client: "t".into() }, at(0)), Response::Hello { .. }));
-    assert!(matches!(r.engine.handle(Request::Hello { protocol: 999, client: "t".into() }, at(0)), Response::Error { .. }));
+    assert!(matches!(
+        r.engine.handle(Request::Hello { protocol: PROTOCOL_VERSION, client: "t".into() }, at(0)),
+        Response::Hello { .. }
+    ));
+    assert!(matches!(
+        r.engine.handle(Request::Hello { protocol: 999, client: "t".into() }, at(0)),
+        Response::Error { .. }
+    ));
 }
 
 #[test]
@@ -145,7 +164,9 @@ fn soft_session_applies_and_stops() {
     assert!(is_ok(&r.engine.handle(start("study", spec(EnforceMode::Hard), None), at(0))));
     assert_eq!(r.sites.0.lock().unwrap().applies.len(), 1);
     assert!(r.apps.0.lock().unwrap().rules_nonempty);
-    assert!(matches!(r.engine.handle(Request::Status, at(1)), Response::Status(s) if s.active.is_some() && s.hosts_applied));
+    assert!(
+        matches!(r.engine.handle(Request::Status, at(1)), Response::Status(s) if s.active.is_some() && s.hosts_applied)
+    );
     assert!(is_ok(&r.engine.handle(Request::StopSession, at(5))));
     assert!(!r.sites.0.lock().unwrap().on);
     assert!(!r.apps.0.lock().unwrap().rules_nonempty);
@@ -197,14 +218,24 @@ fn hard_session_ends_at_deadline() {
 fn deadline_is_clamped_and_emergency_floor_enforced_server_side() {
     let mut r = rig();
     // client asks for a year and a 1-minute emergency cooldown
-    let h = HardModeConfig { deadline: T0 + 365 * 86400, early_exit_challenge: true, exit_cooldown_mins: 20, emergency_cooldown_mins: 1 };
+    let h = HardModeConfig {
+        deadline: T0 + 365 * 86400,
+        early_exit_challenge: true,
+        exit_cooldown_mins: 20,
+        emergency_cooldown_mins: 1,
+    };
     r.engine.handle(start("g", spec(EnforceMode::Hard), Some(h)), at(0));
     let hs = r.engine.state.active.as_ref().unwrap().hard.clone().unwrap();
     assert_eq!(hs.deadline, T0 + MAX_HARD_SECS);
     assert_eq!(hs.emergency_cooldown_mins, studyforge_core::hardmode::MIN_EMERGENCY_COOLDOWN_MINS);
     // a deadline in the past is still at least a minute
     let mut r2 = rig();
-    let h = HardModeConfig { deadline: T0 - 5, early_exit_challenge: false, exit_cooldown_mins: 1, emergency_cooldown_mins: 60 };
+    let h = HardModeConfig {
+        deadline: T0 - 5,
+        early_exit_challenge: false,
+        exit_cooldown_mins: 1,
+        emergency_cooldown_mins: 60,
+    };
     r2.engine.handle(start("g", spec(EnforceMode::Hard), Some(h)), at(0));
     assert_eq!(r2.engine.state.active.as_ref().unwrap().hard.as_ref().unwrap().deadline, T0 + 60);
 }
@@ -290,7 +321,8 @@ fn exit_cooldown_can_be_cancelled() {
 fn emergency_unlock_always_works() {
     let mut r = rig();
     // even with the challenge disabled and a far deadline
-    r.engine.handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 20 * 3600, false, 20, 60))), at(0));
+    r.engine
+        .handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 20 * 3600, false, 20, 60))), at(0));
     assert!(is_ok(&r.engine.handle(Request::Emergency { start: true }, at(100))));
     let Response::Status(s) = r.engine.handle(Request::Status, at(200)) else { panic!() };
     assert_eq!(s.active.unwrap().hard.unwrap().emergency_remaining, Some(3600 - 100));
@@ -304,7 +336,8 @@ fn emergency_unlock_always_works() {
 #[test]
 fn emergency_request_survives_restart() {
     let mut r = rig();
-    r.engine.handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 20 * 3600, false, 20, 60))), at(0));
+    r.engine
+        .handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 20 * 3600, false, 20, 60))), at(0));
     r.engine.handle(Request::Emergency { start: true }, at(100));
     let dir = r.dir;
     drop(r.engine);
@@ -327,7 +360,15 @@ fn cli_emergency_flag_file_ends_session_immediately() {
 #[test]
 fn cli_emergency_flag_also_lifts_schedules() {
     let mut r = rig();
-    let rule = ScheduleRule { id: 1, name: "S".into(), enabled: true, days: ALL_DAYS, start_min: 0, end_min: 0, spec: spec(EnforceMode::Hard) };
+    let rule = ScheduleRule {
+        id: 1,
+        name: "S".into(),
+        enabled: true,
+        days: ALL_DAYS,
+        start_min: 0,
+        end_min: 0,
+        spec: spec(EnforceMode::Hard),
+    };
     r.engine.handle(Request::SetSchedules { rules: vec![rule] }, at(0));
     assert!(r.sites.0.lock().unwrap().on);
     std::fs::write(&r.engine.cfg.emergency_flag, "").unwrap();
@@ -339,7 +380,11 @@ fn cli_emergency_flag_also_lifts_schedules() {
 #[test]
 fn hard_requests_without_hard_session_error() {
     let mut r = rig();
-    for req in [Request::ExitChallenge { typed: "x".into() }, Request::Emergency { start: true }, Request::ExitCooldown { start: true }] {
+    for req in [
+        Request::ExitChallenge { typed: "x".into() },
+        Request::Emergency { start: true },
+        Request::ExitCooldown { start: true },
+    ] {
         assert!(matches!(r.engine.handle(req, at(0)), Response::Error { .. }));
     }
     r.engine.handle(start("g", spec(EnforceMode::Hard), None), at(0));
@@ -350,7 +395,15 @@ fn hard_requests_without_hard_session_error() {
 fn schedules_apply_without_a_session_and_follow_the_clock() {
     let mut r = rig();
     // 2023-11-14 is a Tuesday; T0 is 22:13 UTC
-    let rule = ScheduleRule { id: 1, name: "Evenings".into(), enabled: true, days: WEEKDAYS, start_min: 22 * 60, end_min: 23 * 60 + 30, spec: spec(EnforceMode::Hard) };
+    let rule = ScheduleRule {
+        id: 1,
+        name: "Evenings".into(),
+        enabled: true,
+        days: WEEKDAYS,
+        start_min: 22 * 60,
+        end_min: 23 * 60 + 30,
+        spec: spec(EnforceMode::Hard),
+    };
     assert!(is_ok(&r.engine.handle(Request::SetSchedules { rules: vec![rule] }, at(0))));
     assert!(r.sites.0.lock().unwrap().on, "active at 22:13");
     let Response::Status(s) = r.engine.handle(Request::Status, at(1)) else { panic!() };
@@ -359,7 +412,15 @@ fn schedules_apply_without_a_session_and_follow_the_clock() {
     r.engine.tick(at(77 * 60 + 1)); // 23:30:21
     assert!(!r.sites.0.lock().unwrap().on, "inactive after the window");
     // overnight rule starting at 23:00 covers the rest of the night
-    let overnight = ScheduleRule { id: 2, name: "Night".into(), enabled: true, days: ALL_DAYS, start_min: 23 * 60, end_min: 2 * 60, spec: spec(EnforceMode::Hard) };
+    let overnight = ScheduleRule {
+        id: 2,
+        name: "Night".into(),
+        enabled: true,
+        days: ALL_DAYS,
+        start_min: 23 * 60,
+        end_min: 2 * 60,
+        spec: spec(EnforceMode::Hard),
+    };
     r.engine.handle(Request::SetSchedules { rules: vec![overnight] }, at(77 * 60 + 2));
     assert!(r.sites.0.lock().unwrap().on);
     r.engine.tick(at(3 * 3600 + 60)); // 01:13 next day
@@ -371,7 +432,15 @@ fn schedules_apply_without_a_session_and_follow_the_clock() {
 #[test]
 fn schedule_union_with_session_and_no_flapping() {
     let mut r = rig();
-    let rule = ScheduleRule { id: 1, name: "S".into(), enabled: true, days: ALL_DAYS, start_min: 0, end_min: 0, spec: spec(EnforceMode::Hard) };
+    let rule = ScheduleRule {
+        id: 1,
+        name: "S".into(),
+        enabled: true,
+        days: ALL_DAYS,
+        start_min: 0,
+        end_min: 0,
+        spec: spec(EnforceMode::Hard),
+    };
     r.engine.handle(Request::SetSchedules { rules: vec![rule] }, at(0));
     let n = r.sites.0.lock().unwrap().applies.len();
     // same desired state again: no re-apply until the heal interval
@@ -399,7 +468,9 @@ fn hard_kills_are_logged_once_per_process() {
     let ev = events(&mut r, 10);
     let d: Vec<_> = ev.iter().filter(|e| matches!(e, DaemonEvent::Distraction { .. })).collect();
     assert_eq!(d.len(), 1);
-    assert!(matches!(d[0], DaemonEvent::Distraction { action, target, .. } if action == "killed" && target == "discord"));
+    assert!(
+        matches!(d[0], DaemonEvent::Distraction { action, target, .. } if action == "killed" && target == "discord")
+    );
 }
 
 #[test]
@@ -410,7 +481,10 @@ fn gentle_overlay_flow_close_snooze_dismiss() {
     r.engine.handle(Request::PollEvents, at(1)); // GUI alive
     r.engine.tick(at(2));
     let ev = events(&mut r, 3);
-    let (id, goal) = ev.iter().find_map(|e| if let DaemonEvent::Overlay { id, goal, .. } = e { Some((*id, goal.clone())) } else { None }).expect("overlay event");
+    let (id, goal) = ev
+        .iter()
+        .find_map(|e| if let DaemonEvent::Overlay { id, goal, .. } = e { Some((*id, goal.clone())) } else { None })
+        .expect("overlay event");
     assert_eq!(goal, "finish chapter 4");
     assert!(r.apps.0.lock().unwrap().enforced.is_empty(), "gentle mode never kills by itself");
     assert!(r.notes.0.lock().unwrap().is_empty(), "GUI is running: no fallback notification");
@@ -423,7 +497,10 @@ fn gentle_overlay_flow_close_snooze_dismiss() {
     assert!(events(&mut r, 11).iter().all(|e| !matches!(e, DaemonEvent::Overlay { .. })));
     r.engine.tick(at(6 + SNOOZE_SECS));
     let ev = events(&mut r, 6 + SNOOZE_SECS + 1);
-    let id2 = ev.iter().find_map(|e| if let DaemonEvent::Overlay { id, .. } = e { Some(*id) } else { None }).expect("overlay returns after snooze");
+    let id2 = ev
+        .iter()
+        .find_map(|e| if let DaemonEvent::Overlay { id, .. } = e { Some(*id) } else { None })
+        .expect("overlay returns after snooze");
     assert_ne!(id, id2);
     // close it
     r.engine.handle(Request::OverlayAction { id: id2, choice: OverlayChoice::CloseIt }, at(400));

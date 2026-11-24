@@ -114,6 +114,8 @@ impl NoiseChannel {
         Self { kind, rng: XorShift::new(seed), pink: PinkState::default(), brown: 0.0 }
     }
 
+    // Paul Kellet's published filter coefficients, kept verbatim.
+    #[allow(clippy::excessive_precision)]
     pub fn next_sample(&mut self) -> f32 {
         let white = self.rng.next_f32();
         match self.kind {
@@ -224,10 +226,7 @@ impl Audio {
     /// ("Audio ready" / error) so the UI can show a message instead of failing.
     pub fn spawn(status: impl Fn(String) + Send + 'static) -> Audio {
         let (tx, rx) = mpsc::channel();
-        std::thread::Builder::new()
-            .name("audio".into())
-            .spawn(move || engine(rx, status))
-            .expect("spawn audio thread");
+        std::thread::Builder::new().name("audio".into()).spawn(move || engine(rx, status)).expect("spawn audio thread");
         Audio { tx }
     }
     pub fn send(&self, c: AudioCmd) {
@@ -247,7 +246,9 @@ fn make_source(spec: &TrackSpec) -> Option<Box<dyn Source + Send>> {
         TrackSpec::File(p) => {
             let f = std::fs::File::open(p).ok()?;
             // Looped decoder seeks back to the start: gapless loop.
-            let d = rodio::Decoder::new_looped(std::io::BufReader::new(f)).map_err(|e| tracing::warn!("decode {}: {e}", p.display())).ok()?;
+            let d = rodio::Decoder::new_looped(std::io::BufReader::new(f))
+                .map_err(|e| tracing::warn!("decode {}: {e}", p.display()))
+                .ok()?;
             Some(Box::new(d))
         }
     }
@@ -316,7 +317,11 @@ fn engine(rx: Receiver<AudioCmd>, status: impl Fn(String)) {
                 if let Some(sink) = &sink {
                     let p = Player::connect_new(sink.mixer());
                     p.set_volume(vol.clamp(0.0, 1.0));
-                    p.append(rodio::buffer::SamplesBuffer::new(NonZero::new(2).unwrap(), NonZero::new(SAMPLE_RATE).unwrap(), chime_samples()));
+                    p.append(rodio::buffer::SamplesBuffer::new(
+                        NonZero::new(2).unwrap(),
+                        NonZero::new(SAMPLE_RATE).unwrap(),
+                        chime_samples(),
+                    ));
                     p.detach();
                 }
             }

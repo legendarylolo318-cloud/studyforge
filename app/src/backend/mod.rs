@@ -7,23 +7,23 @@ mod cards;
 mod data;
 mod system;
 
+use crate::daemon_link::DaemonLink;
+use crate::sys::dnd::{self, Dnd};
 use crate::sys::tray::{Tray, TrayState};
+use crate::OverlayWindow;
 use crate::{AppState, AppWindow, SettingsData, SubjectItem, TipItem, TrackItem};
-use std::collections::HashMap;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use studyforge_core::db::Db;
+use studyforge_core::ipc::{DaemonEvent, DaemonStatus, Response};
 use studyforge_core::models::*;
 use studyforge_core::settings::{Settings, ThemeMode};
 use studyforge_core::srs::{Scheduler, Sm2};
-use crate::daemon_link::DaemonLink;
-use crate::OverlayWindow;
-use crate::sys::dnd::{self, Dnd};
-use studyforge_core::ipc::{DaemonEvent, DaemonStatus, Response};
 use studyforge_core::timer::{fmt_clock, Mode, Phase, Stamp, Timer, TimerConfig, TimerEvent};
 
 pub enum Cmd {
@@ -176,43 +176,37 @@ fn color_hex(c: slint::Color) -> String {
     format!("#{:02x}{:02x}{:02x}", c.red(), c.green(), c.blue())
 }
 
-pub fn spawn(
-    ui: Weak<AppWindow>,
-    data_dir: PathBuf,
-    rx: Receiver<Cmd>,
-    tray: Option<Tray>,
-    shared: Shared,
-    hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
-    self_tx: Sender<Cmd>,
-    overlay_win: Weak<OverlayWindow>,
-) -> std::thread::JoinHandle<()> {
+/// Everything the backend thread needs from the UI thread.
+pub struct Init {
+    pub ui: Weak<AppWindow>,
+    pub data_dir: PathBuf,
+    pub tray: Option<Tray>,
+    pub shared: Shared,
+    pub hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
+    pub self_tx: Sender<Cmd>,
+    pub overlay_win: Weak<OverlayWindow>,
+}
+
+pub fn spawn(init: Init, rx: Receiver<Cmd>) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("backend".into())
-        .spawn(move || match Db::open(&studyforge_core::paths::db_path(&data_dir)) {
+        .spawn(move || match Db::open(&studyforge_core::paths::db_path(&init.data_dir)) {
             Ok(db) => {
-                let mut b = Backend::new(ui, db, tray, shared, hotkey_rebind, data_dir.clone(), self_tx, overlay_win);
+                let mut b = Backend::new(init, db);
                 b.run(rx);
             }
             Err(e) => {
                 tracing::error!("cannot open database: {e}");
                 let msg = format!("Database error: {e}");
-                let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_status_line(msg.into()));
+                let _ = init.ui.upgrade_in_event_loop(move |ui| ui.global::<AppState>().set_status_line(msg.into()));
             }
         })
         .expect("spawn backend")
 }
 
 impl Backend {
-    fn new(
-        ui: Weak<AppWindow>,
-        db: Db,
-        tray: Option<Tray>,
-        shared: Shared,
-        hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
-        data_dir: PathBuf,
-        self_tx: Sender<Cmd>,
-        overlay_win: Weak<OverlayWindow>,
-    ) -> Self {
+    fn new(init: Init, db: Db) -> Self {
+        let Init { ui, data_dir, tray, shared, hotkey_rebind, self_tx, overlay_win } = init;
         let settings = db.load_settings().unwrap_or_default();
         if let Ok(n) = db.close_dangling_sessions() {
             if n > 0 {
@@ -338,7 +332,8 @@ impl Backend {
         if self.timer.is_active() {
             let (s, _) = self.timer.stop(stamp());
             if let Some(id) = self.session_id.take() {
-                let _ = self.db.finish_session(id, chrono::Utc::now().timestamp(), s.focus_secs, s.cycles as i64, None, "");
+                let _ =
+                    self.db.finish_session(id, chrono::Utc::now().timestamp(), s.focus_secs, s.cycles as i64, None, "");
             }
         }
     }
@@ -346,12 +341,18 @@ impl Backend {
     // ------------------------------------------------------------------
     fn handle(&mut self, cmd: Cmd) {
         match cmd {
-            Cmd::Start { mode, subject_idx, goal, hard, hard_mins } => self.start(mode, subject_idx, goal, hard, hard_mins),
+            Cmd::Start { mode, subject_idx, goal, hard, hard_mins } => {
+                self.start(mode, subject_idx, goal, hard, hard_mins)
+            }
             Cmd::AddSchedule { list_idx, days, start, end } => self.add_schedule(list_idx, days, start, end),
             Cmd::ToggleSchedule(id, on) => self.toggle_schedule(id, on),
             Cmd::DeleteSchedule(id) => self.delete_schedule(id),
-            Cmd::HardChallenge(t) => self.hard_request(studyforge_core::ipc::Request::ExitChallenge { typed: t }, "hard"),
-            Cmd::HardCooldown(start) => self.hard_request(studyforge_core::ipc::Request::ExitCooldown { start }, "hard"),
+            Cmd::HardChallenge(t) => {
+                self.hard_request(studyforge_core::ipc::Request::ExitChallenge { typed: t }, "hard")
+            }
+            Cmd::HardCooldown(start) => {
+                self.hard_request(studyforge_core::ipc::Request::ExitCooldown { start }, "hard")
+            }
             Cmd::HardEmergency(start) => self.hard_request(studyforge_core::ipc::Request::Emergency { start }, "hard"),
             Cmd::ChooseDataDir => self.choose_data_dir(),
             Cmd::SetDataDir(p) => self.set_data_dir(p),
@@ -418,7 +419,9 @@ impl Backend {
             Cmd::SetListMode(id, m) => self.set_list_mode(id, m),
             Cmd::EditList(id) => self.edit_list(id),
             Cmd::NewList => self.new_list(),
-            Cmd::SaveList { id, name, domains, processes, steam, mode } => self.save_list(id, name, domains, processes, steam, mode),
+            Cmd::SaveList { id, name, domains, processes, steam, mode } => {
+                self.save_list(id, name, domains, processes, steam, mode)
+            }
             Cmd::DuplicateList(id) => self.duplicate_list(id),
             Cmd::DeleteList(id) => self.delete_list(id),
             Cmd::InstallHelper => self.install_helper(),
@@ -495,11 +498,16 @@ impl Backend {
             let volume = self.mix.get(&t.id).copied().unwrap_or(0.0);
             self.audio.send(AudioCmd::Track { id: t.id.clone(), spec: t.spec.clone(), volume });
         }
-        let items: Vec<(String, String, f32)> =
-            self.tracks.iter().map(|t| (t.id.clone(), t.name.clone(), self.mix.get(&t.id).copied().unwrap_or(0.0))).collect();
+        let items: Vec<(String, String, f32)> = self
+            .tracks
+            .iter()
+            .map(|t| (t.id.clone(), t.name.clone(), self.mix.get(&t.id).copied().unwrap_or(0.0)))
+            .collect();
         let _ = self.ui.upgrade_in_event_loop(move |ui| {
-            let v: Vec<TrackItem> =
-                items.into_iter().map(|(id, name, volume)| TrackItem { id: id.into(), name: name.into(), volume }).collect();
+            let v: Vec<TrackItem> = items
+                .into_iter()
+                .map(|(id, name, volume)| TrackItem { id: id.into(), name: name.into(), volume })
+                .collect();
             ui.global::<AppState>().set_tracks(ModelRc::new(VecModel::from(v)));
         });
     }
@@ -510,7 +518,9 @@ impl Backend {
         }
         if hard {
             if !self.daemon.connected {
-                self.flash("Hard mode needs the blocking helper, which isn't running. Install it from the Blocking page.");
+                self.flash(
+                    "Hard mode needs the blocking helper, which isn't running. Install it from the Blocking page.",
+                );
                 return;
             }
             if self.selected_lists.is_empty() && !self.settings.allowlist_mode {
@@ -543,7 +553,8 @@ impl Backend {
             } else {
                 let _ = self.db.finish_session(id, now.wall, s.focus_secs, s.cycles as i64, None, "");
                 self.pending_outcome = Some(id);
-                let summary = format!("{} focused · {} cycle(s)", fmt_clock(Duration::from_secs(s.focus_secs as u64)), s.cycles);
+                let summary =
+                    format!("{} focused · {} cycle(s)", fmt_clock(Duration::from_secs(s.focus_secs as u64)), s.cycles);
                 let goal = self.session_goal.clone();
                 let _ = self.ui.upgrade_in_event_loop(move |ui| {
                     let st = ui.global::<AppState>();
@@ -764,7 +775,9 @@ impl Backend {
         if old.dnd_during_work && !self.settings.dnd_during_work {
             self.dnd_restore();
         }
-        if old.browser_policies != self.settings.browser_policies || old.block_steam_client != self.settings.block_steam_client {
+        if old.browser_policies != self.settings.browser_policies
+            || old.block_steam_client != self.settings.block_steam_client
+        {
             self.push_schedules_to_daemon();
         }
         if old.hotkey != self.settings.hotkey {
@@ -811,7 +824,8 @@ impl Backend {
         } else {
             TrayState::Work
         };
-        let tip_text = if active { format!("StudyForge — {} {}", label, text) } else { "StudyForge — idle".to_string() };
+        let tip_text =
+            if active { format!("StudyForge — {} {}", label, text) } else { "StudyForge — idle".to_string() };
         if let Some(tray) = &self.tray {
             if self.last_tray != (tray_state, tip_text.clone()) {
                 tray.set(tray_state, &tip_text);
@@ -887,7 +901,14 @@ pub fn wire_callbacks(ui: &AppWindow, tx: &Sender<Cmd>) {
     });
     let t = tx.clone();
     st.on_save_list(move |id, n, d, p, s, m| {
-        let _ = t.send(Cmd::SaveList { id: id as i64, name: n.to_string(), domains: d.to_string(), processes: p.to_string(), steam: s, mode: m });
+        let _ = t.send(Cmd::SaveList {
+            id: id as i64,
+            name: n.to_string(),
+            domains: d.to_string(),
+            processes: p.to_string(),
+            steam: s,
+            mode: m,
+        });
     });
     let t = tx.clone();
     st.on_duplicate_list(move |id| {

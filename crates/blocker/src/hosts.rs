@@ -5,9 +5,9 @@
 //! (temp file in the same directory, fsync, rename) with fallbacks for locked
 //! or bind-mounted files.
 
-use studyforge_core::presets::normalize_domain;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use studyforge_core::presets::normalize_domain;
 
 pub const BEGIN: &str = "# >>> StudyForge BEGIN (do not edit) >>>";
 pub const END: &str = "# <<< StudyForge END <<<";
@@ -203,11 +203,15 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), HostsError> {
             f.write_all(data)?;
             f.sync_all()?;
         }
+        // Keep the file's permissions exactly as they were. (Never use
+        // `set_readonly(false)` on Unix: it would make the file world-writable.)
+        #[cfg(unix)]
         if let Some(m) = &existing_meta {
-            let mut perms = m.permissions();
-            perms.set_readonly(false); // temp must be renamable/deletable
-            std::fs::set_permissions(&tmp, perms)?;
+            std::fs::set_permissions(&tmp, m.permissions())?;
         }
+        // Windows refuses to replace a read-only file: clear the attribute for
+        // the swap, it is restored below.
+        #[cfg(windows)]
         if was_readonly {
             let mut p = std::fs::metadata(&target)?.permissions();
             p.set_readonly(false);
@@ -222,6 +226,7 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), HostsError> {
             tracing::warn!("atomic replace of {} failed ({e}); falling back to in-place write", target.display());
             let _ = std::fs::remove_file(&tmp);
             (|| -> std::io::Result<()> {
+                #[cfg(windows)]
                 if was_readonly {
                     let mut p = std::fs::metadata(&target)?.permissions();
                     p.set_readonly(false);
@@ -234,6 +239,7 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), HostsError> {
         }
     };
     let _ = std::fs::remove_file(&tmp);
+    #[cfg(windows)]
     if was_readonly {
         if let Ok(m) = std::fs::metadata(&target) {
             let mut p = m.permissions();
@@ -241,6 +247,7 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), HostsError> {
             let _ = std::fs::set_permissions(&target, p);
         }
     }
+    let _ = was_readonly; // used on Windows only
     result.map_err(io_err(&target))
 }
 
@@ -322,7 +329,8 @@ mod tests {
 
     #[test]
     fn invalid_domains_never_written() {
-        let with = apply_to_text(ORIGINAL, &d(&["ok.com", "1.2.3.4", "evil.com\n0.0.0.0 bank.com", "*.x.com", "Upper.COM"]));
+        let with =
+            apply_to_text(ORIGINAL, &d(&["ok.com", "1.2.3.4", "evil.com\n0.0.0.0 bank.com", "*.x.com", "Upper.COM"]));
         assert!(with.contains("0.0.0.0 ok.com"));
         for bad in ["1.2.3.4", "bank.com", "*.x.com", "Upper"] {
             assert!(!with.contains(bad), "{bad} leaked");
@@ -363,7 +371,11 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&hosts).unwrap(), ORIGINAL);
         assert!(!m.is_applied());
         // no temp files left behind
-        let leftovers: Vec<_> = std::fs::read_dir(dir.path()).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
         assert!(leftovers.iter().all(|n| !n.contains("studyforge.tmp")), "{leftovers:?}");
     }
 
@@ -401,6 +413,24 @@ mod tests {
         assert!(std::fs::metadata(&hosts).unwrap().permissions().readonly(), "read-only attribute restored");
         m.clear().unwrap();
         assert_eq!(std::fs::read_to_string(&hosts).unwrap(), ORIGINAL);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_mode_is_preserved_never_world_writable() {
+        use std::os::unix::fs::PermissionsExt;
+        for mode in [0o644u32, 0o600, 0o444] {
+            let dir = tempfile::tempdir().unwrap();
+            let hosts = dir.path().join("hosts");
+            std::fs::write(&hosts, ORIGINAL).unwrap();
+            std::fs::set_permissions(&hosts, std::fs::Permissions::from_mode(mode)).unwrap();
+            let m = HostsManager::new(hosts.clone(), dir.path().join("b"), false);
+            m.apply(&d(&["a.com"])).unwrap();
+            let got = std::fs::metadata(&hosts).unwrap().permissions().mode() & 0o777;
+            assert_eq!(got, mode, "mode after apply");
+            m.clear().unwrap();
+            assert_eq!(std::fs::metadata(&hosts).unwrap().permissions().mode() & 0o777, mode, "mode after clear");
+        }
     }
 
     #[cfg(unix)]

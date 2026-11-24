@@ -1,0 +1,32 @@
+[Unit]
+Description=StudyForge blocking helper (studyd)
+Documentation=https://github.com/ (see README.md)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/studyd run
+Restart=always
+RestartSec=2
+# /run/studyd/studyd.sock, /var/lib/studyd (state), /etc/studyd (allowed_users)
+RuntimeDirectory=studyd
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StateDirectory=studyd
+ConfigurationDirectory=studyd
+
+# studyd must run as root: it edits /etc/hosts and browser policy directories and
+# stops processes of the allowed users. Everything else is locked down.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
