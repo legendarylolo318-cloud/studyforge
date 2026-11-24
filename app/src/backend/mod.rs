@@ -2,6 +2,7 @@
 //! directly. UI updates are pushed with `upgrade_in_event_loop`.
 
 use crate::audio::{self, Audio, AudioCmd, TrackInfo};
+mod blocking;
 mod cards;
 mod data;
 
@@ -18,6 +19,9 @@ use studyforge_core::db::Db;
 use studyforge_core::models::*;
 use studyforge_core::settings::{Settings, ThemeMode};
 use studyforge_core::srs::{Scheduler, Sm2};
+use crate::daemon_link::DaemonLink;
+use crate::OverlayWindow;
+use studyforge_core::ipc::{DaemonEvent, DaemonStatus, Response};
 use studyforge_core::timer::{fmt_clock, Mode, Phase, Stamp, Timer, TimerConfig, TimerEvent};
 
 pub enum Cmd {
@@ -32,6 +36,18 @@ pub enum Cmd {
     AddTip(String),
     DeleteTip(i64),
     PageChanged(i32),
+    ToggleListSelected(i64, bool),
+    SetListMode(i64, i32),
+    EditList(i64),
+    NewList,
+    SaveList { id: i64, name: String, domains: String, processes: String, steam: bool, mode: i32 },
+    DuplicateList(i64),
+    DeleteList(i64),
+    InstallHelper,
+    DaemonStatus(Result<DaemonStatus, String>),
+    DaemonEvents(Vec<DaemonEvent>),
+    DaemonReply { tag: &'static str, result: Result<Response, String> },
+    OverlayChoice(i32),
     AddDeck { name: String, subject_idx: i32 },
     DeleteDeck(i64),
     StudyDeck(i64),
@@ -101,6 +117,14 @@ pub struct Backend {
     last_refresh: Instant,
     block_status: String,
     self_tx: Sender<Cmd>,
+    link: DaemonLink,
+    daemon: blocking::DaemonView,
+    blocklists: Vec<Blocklist>,
+    selected_lists: Vec<Id>,
+    edit_list: Option<Id>,
+    overlay: blocking::OverlayQueue,
+    overlay_win: Weak<OverlayWindow>,
+    blocking_session: bool,
     sched: Box<dyn Scheduler>,
     review: Option<cards::ReviewSession>,
     import: Option<cards::ImportDraft>,
@@ -144,12 +168,13 @@ pub fn spawn(
     shared: Shared,
     hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
     self_tx: Sender<Cmd>,
+    overlay_win: Weak<OverlayWindow>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("backend".into())
         .spawn(move || match Db::open(&studyforge_core::paths::db_path(&data_dir)) {
             Ok(db) => {
-                let mut b = Backend::new(ui, db, tray, shared, hotkey_rebind, data_dir.clone(), self_tx);
+                let mut b = Backend::new(ui, db, tray, shared, hotkey_rebind, data_dir.clone(), self_tx, overlay_win);
                 b.run(rx);
             }
             Err(e) => {
@@ -170,6 +195,7 @@ impl Backend {
         hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
         data_dir: PathBuf,
         self_tx: Sender<Cmd>,
+        overlay_win: Weak<OverlayWindow>,
     ) -> Self {
         let settings = db.load_settings().unwrap_or_default();
         if let Ok(n) = db.close_dangling_sessions() {
@@ -215,7 +241,15 @@ impl Backend {
             preview_dirty: None,
             last_refresh: Instant::now(),
             block_status: "Blocking helper not installed".into(),
+            link: DaemonLink::spawn(blocking::endpoint(), self_tx.clone()),
             self_tx,
+            daemon: Default::default(),
+            blocklists: vec![],
+            selected_lists: vec![],
+            edit_list: None,
+            overlay: Default::default(),
+            overlay_win,
+            blocking_session: false,
             sched: Box::new(Sm2),
             review: None,
             import: None,
@@ -230,6 +264,10 @@ impl Backend {
         b.push_lists();
         b.push_timer();
         b.push_note_filter_names();
+        b.load_selection();
+        b.reload_blocklists();
+        b.push_blocklists();
+        b.refresh_helper_ui();
         b.refresh_for_page();
         b
     }
@@ -264,6 +302,11 @@ impl Backend {
 
     fn shutdown(&mut self) {
         self.flush_note();
+        if self.blocking_session {
+            // Quitting the app ends a normal (non-hard) block; a hard lock survives by design.
+            let _ = crate::daemon_link::request(&blocking::endpoint(), &studyforge_core::ipc::Request::StopSession);
+        }
+        self.link.shutdown();
         self.audio.send(AudioCmd::Quit);
         if self.timer.is_active() {
             let (s, _) = self.timer.stop(stamp());
@@ -334,6 +377,18 @@ impl Backend {
                 self.page = p;
                 self.refresh_for_page();
             }
+            Cmd::ToggleListSelected(id, on) => self.toggle_list_selected(id, on),
+            Cmd::SetListMode(id, m) => self.set_list_mode(id, m),
+            Cmd::EditList(id) => self.edit_list(id),
+            Cmd::NewList => self.new_list(),
+            Cmd::SaveList { id, name, domains, processes, steam, mode } => self.save_list(id, name, domains, processes, steam, mode),
+            Cmd::DuplicateList(id) => self.duplicate_list(id),
+            Cmd::DeleteList(id) => self.delete_list(id),
+            Cmd::InstallHelper => self.install_helper(),
+            Cmd::DaemonStatus(r) => self.on_daemon_status(r),
+            Cmd::DaemonEvents(e) => self.on_daemon_events(e),
+            Cmd::DaemonReply { tag, result } => self.on_daemon_reply(tag, result),
+            Cmd::OverlayChoice(c) => self.overlay_choice(c),
             Cmd::AddDeck { name, subject_idx } => self.add_deck(name, subject_idx),
             Cmd::DeleteDeck(id) => self.delete_deck(id),
             Cmd::StudyDeck(id) => self.study_deck(id),
@@ -426,6 +481,7 @@ impl Backend {
         self.session_goal = goal.trim().to_string();
         let ev = self.timer.start(if mode == 1 { Mode::Flow } else { Mode::Pomodoro }, now);
         self.last_progress_save = Instant::now();
+        self.begin_blocking(&goal);
         self.handle_events(ev);
     }
 
@@ -433,6 +489,7 @@ impl Backend {
         let now = stamp();
         let (s, ev) = self.timer.stop(now);
         self.handle_events(ev);
+        self.end_blocking();
         if let Some(id) = self.session_id.take() {
             if s.focus_secs < 10 {
                 let _ = self.db.delete_session(id); // accidental start
@@ -729,12 +786,51 @@ pub fn open_folder(p: &std::path::Path) {
     }
 }
 
+pub fn wire_overlay(win: &OverlayWindow, tx: &Sender<Cmd>) {
+    let t = tx.clone();
+    win.on_choose(move |c| {
+        let _ = t.send(Cmd::OverlayChoice(c));
+    });
+}
+
 pub fn wire_callbacks(ui: &AppWindow, tx: &Sender<Cmd>) {
     let t = tx.clone();
     ui.on_page_changed(move |p| {
         let _ = t.send(Cmd::PageChanged(p));
     });
     let st = ui.global::<AppState>();
+    let t = tx.clone();
+    st.on_toggle_list_selected(move |id, on| {
+        let _ = t.send(Cmd::ToggleListSelected(id as i64, on));
+    });
+    let t = tx.clone();
+    st.on_set_list_mode(move |id, m| {
+        let _ = t.send(Cmd::SetListMode(id as i64, m));
+    });
+    let t = tx.clone();
+    st.on_edit_list(move |id| {
+        let _ = t.send(Cmd::EditList(id as i64));
+    });
+    let t = tx.clone();
+    st.on_new_list(move || {
+        let _ = t.send(Cmd::NewList);
+    });
+    let t = tx.clone();
+    st.on_save_list(move |id, n, d, p, s, m| {
+        let _ = t.send(Cmd::SaveList { id: id as i64, name: n.to_string(), domains: d.to_string(), processes: p.to_string(), steam: s, mode: m });
+    });
+    let t = tx.clone();
+    st.on_duplicate_list(move |id| {
+        let _ = t.send(Cmd::DuplicateList(id as i64));
+    });
+    let t = tx.clone();
+    st.on_delete_list(move |id| {
+        let _ = t.send(Cmd::DeleteList(id as i64));
+    });
+    let t = tx.clone();
+    st.on_install_helper(move || {
+        let _ = t.send(Cmd::InstallHelper);
+    });
     let t = tx.clone();
     st.on_add_deck(move |n, s| {
         let _ = t.send(Cmd::AddDeck { name: n.to_string(), subject_idx: s });

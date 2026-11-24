@@ -9,7 +9,9 @@ import { TasksPage } from "tasks.slint";
 import { NotesPage } from "notes.slint";
 import { StatsPage } from "stats.slint";
 import { FlashcardsPage } from "flashcards.slint";
-export { Theme, AppState }
+import { BlockingPage } from "blocking.slint";
+import { OverlayWindow } from "overlay.slint";
+export { Theme, AppState, OverlayWindow }
 
 export component AppWindow inherits Window {
     title: "StudyForge";
@@ -62,11 +64,9 @@ export component AppWindow inherits Window {
                     if root.page == 2: FlashcardsPage { }
                     if root.page == 3: NotesPage { }
                     if root.page == 4: TasksPage { }
+                    if root.page == 5: BlockingPage { }
                     if root.page == 6: StatsPage { }
                     if root.page == 7: SettingsPage { }
-                    if root.page == 5: Card {
-                        Text { text: "Coming soon"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; }
-                    }
                 }
             }
         }

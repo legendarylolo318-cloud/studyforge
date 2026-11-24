@@ -1,0 +1,40 @@
+import { Theme } from "theme.slint";
+
+// Always-on-top reminder shown by "gentle" mode (the app is never killed
+// unless the user chooses to). Actions: 0 = close it, 1 = 5 more minutes, 2 = dismiss.
+export component OverlayWindow inherits Window {
+    title: "StudyForge";
+    always-on-top: true;
+    no-frame: true;
+    width: 520px;
+    height: 230px;
+    background: transparent;
+    in property <string> goal;
+    in property <string> target;
+    callback choose(int);
+
+    Rectangle {
+        background: Theme.surface;
+        border-radius: 14px;
+        border-width: 2px;
+        border-color: Theme.warn;
+        VerticalLayout {
+            padding: 22px; spacing: 12px;
+            Text { text: "Focus check"; font-size: 13px; color: Theme.warn; font-weight: 700; }
+            Text {
+                text: root.goal == "" ? ("Close " + root.target + "?") : ("You said you'd study: " + root.goal + ". Close " + root.target + "?");
+                font-size: 18px; font-weight: 600; color: Theme.text; wrap: word-wrap; vertical-stretch: 1;
+            }
+            HorizontalLayout {
+                spacing: 10px; alignment: end;
+                for label[i] in ["Close it", "5 more minutes", "Dismiss"] : Rectangle {
+                    height: 38px; width: i == 1 ? 140px : 110px; border-radius: 8px;
+                    background: i == 0 ? Theme.accent : (ta.has-hover ? Theme.surface-hi : transparent);
+                    border-width: i == 0 ? 0px : 1px; border-color: Theme.border;
+                    Text { text: label; color: i == 0 ? Theme.on-accent : Theme.text; horizontal-alignment: center; vertical-alignment: center; font-weight: 600; }
+                    ta := TouchArea { clicked => { root.choose(i); } mouse-cursor: pointer; }
+                }
+            }
+        }
+    }
+}

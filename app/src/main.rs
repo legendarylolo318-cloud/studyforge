@@ -1,6 +1,7 @@
 //! StudyForge GUI entry point.
 
 mod audio;
+mod daemon_link;
 mod backend;
 mod sys;
 
@@ -34,6 +35,8 @@ fn main() -> anyhow::Result<()> {
     let ui = AppWindow::new()?;
     let (tx, rx) = mpsc::channel::<Cmd>();
     backend::wire_callbacks(&ui, &tx);
+    let overlay = OverlayWindow::new()?;
+    backend::wire_overlay(&overlay, &tx);
 
     // --- tray ---
     let tray_handler: sys::tray::ActionHandler = {
@@ -102,7 +105,7 @@ fn main() -> anyhow::Result<()> {
         ui.set_page(p);
         let _ = tx.send(Cmd::PageChanged(p));
     }
-    let handle = backend::spawn(ui.as_weak(), data_dir, rx, tray, shared, hotkey_rebind, tx.clone());
+    let handle = backend::spawn(ui.as_weak(), data_dir, rx, tray, shared, hotkey_rebind, tx.clone(), overlay.as_weak());
     ui.show()?;
     slint::run_event_loop_until_quit()?;
     let _ = tx.send(Cmd::Shutdown);

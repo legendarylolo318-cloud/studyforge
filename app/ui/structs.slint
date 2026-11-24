@@ -44,3 +44,6 @@ export struct DistractionRow { when: string, target: string, list: string, actio
 export struct DeckRow { id: int, name: string, subject: string, total: int, due: int, new-count: int }
 export struct CardRow { id: int, front: string, back: string, status: string }
 export struct CsvRow { cols: [string] }
+
+export struct ListItem { id: int, name: string, preset: bool, domains: int, processes: int, mode: int, selected: bool, steam: bool, editing: bool }
+export struct ScheduleItem { id: int, name: string, days: string, time: string, lists: string, enabled: bool }

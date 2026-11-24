@@ -5,3 +5,16 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow = "1.0.105"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+studyforge-core = { version = "0.1.0", path = "../core" }
+sysinfo = "0.40.4"
+thiserror = "2.0.21"
+tracing = "0.1.44"
+
+[target."cfg(windows)".dependencies]
+winreg = "0.56.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -2,6 +2,7 @@
 //! stats, schedules, hard-mode rules, IPC messages and blocklist presets.
 //! This crate intentionally contains no UI and no platform enforcement code.
 
+pub mod blocking;
 pub mod db;
 pub mod hardmode;
 pub mod import;

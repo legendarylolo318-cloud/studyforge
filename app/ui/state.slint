@@ -1,4 +1,4 @@
-import { SubjectItem, TipItem, SettingsData, TrackItem, TodoItem, NoteItem, MdBlock, BarItem, SessionRow, DistractionRow, DeckRow, CardRow, CsvRow } from "structs.slint";
+import { SubjectItem, TipItem, SettingsData, TrackItem, TodoItem, NoteItem, MdBlock, BarItem, SessionRow, DistractionRow, DeckRow, CardRow, CsvRow, ListItem, ScheduleItem } from "structs.slint";
 
 // Shared state between Rust and the screens. Rust owns the data; the UI only
 // reads properties and invokes callbacks.
@@ -126,6 +126,33 @@ export global AppState {
     callback csv-update(int, int, int, bool);
     callback import-confirm(int, string);
     callback import-cancel();
+
+    // ----- blocking -----
+    in-out property <bool> helper-connected: false;
+    in-out property <string> helper-status;       // one-line summary
+    in-out property <string> helper-detail;       // warnings / hints
+    in-out property <string> helper-install-note;
+    in-out property <[ListItem]> blocklists;
+    in-out property <int> edit-list-id: -1;
+    in-out property <string> edit-name;
+    in-out property <string> edit-domains;
+    in-out property <string> edit-processes;
+    in-out property <bool> edit-steam: false;
+    in-out property <int> edit-mode: 0;
+    in-out property <bool> edit-preset: false;
+    in-out property <int> edit-seq: 0;
+    in-out property <string> edit-error;
+    callback toggle-list-selected(int, bool);
+    callback set-list-mode(int, int);
+    callback edit-list(int);
+    callback new-list();
+    callback save-list(int, string, string, string, bool, int);
+    callback duplicate-list(int);
+    callback delete-list(int);
+    callback install-helper();
+
+    // ----- overlay / misc -----
+    in-out property <string> flash;
 
     // ----- stats -----
     in-out property <string> stats-today;

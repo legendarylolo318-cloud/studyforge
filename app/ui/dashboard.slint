@@ -4,18 +4,6 @@ import { AppState } from "state.slint";
 import { Card, Dim, Ring, Bar } from "components.slint";
 import { TaskRow } from "tasks.slint";
 
-component Stat inherits Card {
-    in property <string> title;
-    in property <string> value;
-    in property <string> sub;
-    VerticalLayout {
-        padding: 16px; spacing: 4px; alignment: center;
-        Dim { text: root.title; }
-        Text { text: root.value; font-size: 30px; font-weight: 700; color: Theme.text; }
-        Dim { text: root.sub; }
-    }
-}
-
 export component DashboardPage inherits ScrollView {
     VerticalLayout {
         spacing: 14px;

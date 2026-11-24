@@ -1,4 +1,4 @@
-import { ComboBox, LineEdit, TextEdit, Slider, Switch, ScrollView } from "std-widgets.slint";
+import { ComboBox, LineEdit, TextEdit, Slider, Switch, ScrollView, CheckBox } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
 import { Card, Dim, PrimaryButton, GhostButton, Ring } from "components.slint";
@@ -133,6 +133,15 @@ export component FocusPage inherits Rectangle {
                 }
                 Dim { text: "Goal for this session"; }
                 goal := LineEdit { placeholder-text: "e.g. finish chapter 4 exercises"; enabled: !AppState.timer-active; }
+                Dim { text: "Block during this session"; }
+                for l in AppState.blocklists : HorizontalLayout {
+                    spacing: 6px; height: 28px;
+                    CheckBox { checked: l.selected; enabled: !AppState.timer-active; toggled => { AppState.toggle-list-selected(l.id, self.checked); } }
+                    Text { text: l.name; color: Theme.text; vertical-alignment: center; font-size: 13px; overflow: elide; horizontal-stretch: 1; }
+                    Text { text: l.mode == 0 ? "hard" : "gentle"; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; }
+                }
+                if !AppState.helper-connected: Dim { text: "Blocking helper not installed — blocking is off."; }
+                if AppState.flash != "": Text { text: AppState.flash; color: Theme.warn; wrap: word-wrap; font-size: 12px; }
                 Rectangle { vertical-stretch: 1; }
                 GhostButton { text: root.drawer ? "Hide sound mixer" : "Sound mixer ♪"; selected: root.drawer; clicked => { root.drawer = !root.drawer; } }
             }
