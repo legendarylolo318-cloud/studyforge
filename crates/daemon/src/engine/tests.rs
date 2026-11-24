@@ -87,6 +87,7 @@ fn rig_in(dir: tempfile::TempDir) -> Rig {
         emergency_flag: dir.path().join("emergency-unlock"),
         dry_run: false,
         allowed_owners: vec!["1000".into()],
+        honor_emergency_flag: true,
     };
     let engine = Engine::new(
         cfg,
@@ -664,4 +665,15 @@ fn lock_is_never_longer_than_the_maximum_after_restart() {
     let mut r2 = rig_in(dir);
     r2.engine.reconcile_on_start(at(0));
     assert_eq!(r2.engine.state.active.as_ref().unwrap().hard.as_ref().unwrap().deadline, T0 + MAX_HARD_SECS);
+}
+
+#[test]
+fn emergency_flag_ignored_when_state_dir_is_not_admin_only() {
+    let mut r = rig();
+    r.engine.cfg.honor_emergency_flag = false;
+    r.engine.handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 3600, true, 20, 60))), at(0));
+    std::fs::write(&r.engine.cfg.emergency_flag, "").unwrap();
+    r.engine.tick(at(5));
+    assert!(r.engine.state.active.is_some(), "a planted flag must not end the lock");
+    assert!(!r.engine.cfg.emergency_flag.exists(), "and is removed");
 }

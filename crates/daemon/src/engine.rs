@@ -80,6 +80,9 @@ pub struct EngineConfig {
     pub emergency_flag: PathBuf,
     pub dry_run: bool,
     pub allowed_owners: Vec<String>,
+    /// Only honour the flag file when the state directory is writable by
+    /// administrators alone (otherwise any user could skip the cooldown).
+    pub honor_emergency_flag: bool,
 }
 
 pub type LocalTime = Box<dyn Fn(DateTime<Utc>) -> DateTime<FixedOffset> + Send>;
@@ -246,6 +249,11 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
     }
 
     fn check_emergency_flag(&mut self, ts: i64) {
+        if self.cfg.emergency_flag.exists() && !self.cfg.honor_emergency_flag {
+            tracing::warn!("ignoring emergency-unlock flag: the state directory is not admin-only");
+            let _ = std::fs::remove_file(&self.cfg.emergency_flag);
+            return;
+        }
         if self.cfg.emergency_flag.exists() {
             let _ = std::fs::remove_file(&self.cfg.emergency_flag);
             let had_session = self.state.active.take().is_some();

@@ -79,6 +79,56 @@ fn allowed_users(l: &Layout, opts: &Options) -> Vec<String> {
     v
 }
 
+/// Make the daemon state directory writable by administrators only.
+/// Returns false if that could not be ensured.
+///
+/// On Windows this matters: `%ProgramData%` lets ordinary users create files in
+/// new subfolders, which would let anyone plant the emergency-unlock flag or an
+/// `allowed_users` file.
+pub fn secure_state_dir(dir: &std::path::Path, sandbox: bool) -> bool {
+    if sandbox {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let Ok(meta) = std::fs::metadata(dir) else { return false };
+        if meta.uid() != 0 {
+            tracing::error!("{} is not owned by root", dir.display());
+            return false;
+        }
+        if meta.mode() & 0o022 != 0 {
+            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755));
+        }
+        std::fs::metadata(dir).map(|m| m.mode() & 0o022 == 0).unwrap_or(false)
+    }
+    #[cfg(windows)]
+    {
+        // Well-known SIDs avoid localised account names: SYSTEM, Administrators.
+        let ok = std::process::Command::new("icacls")
+            .arg(dir)
+            .args([
+                "/inheritance:r",
+                "/grant:r",
+                "*S-1-5-18:(OI)(CI)F",
+                "*S-1-5-32-544:(OI)(CI)F",
+                "/remove:g",
+                "*S-1-5-32-545",
+                "*S-1-1-0",
+                "*S-1-5-11",
+                "/Q",
+            ])
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            tracing::error!("could not restrict the ACL of {}", dir.display());
+        }
+        ok
+    }
+}
+
 /// Shows a desktop notification in each allowed user's session (best effort).
 pub struct DesktopNotifier {
     pub users: Arc<Mutex<Vec<String>>>,
@@ -140,6 +190,7 @@ fn steam_commons(users: Arc<Mutex<Vec<String>>>) -> Box<dyn Fn() -> Vec<PathBuf>
 pub fn run_daemon(opts: &Options, stop: Arc<AtomicBool>) -> Result<()> {
     let l = layout(opts);
     std::fs::create_dir_all(&l.paths.state_dir).with_context(|| format!("creating {}", l.paths.state_dir.display()))?;
+    let secured = secure_state_dir(&l.paths.state_dir, opts.sandbox.is_some());
     let users = Arc::new(Mutex::new(allowed_users(&l, opts)));
     if users.lock().unwrap().is_empty() {
         tracing::warn!("{} is empty or missing: only root can talk to studyd", l.allowed_users_file.display());
@@ -151,6 +202,7 @@ pub fn run_daemon(opts: &Options, stop: Arc<AtomicBool>) -> Result<()> {
         emergency_flag: l.emergency_flag.clone(),
         dry_run: opts.dry_run,
         allowed_owners: users.lock().unwrap().clone(),
+        honor_emergency_flag: secured,
     };
     let mut engine = Engine::new(
         cfg,

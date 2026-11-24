@@ -78,6 +78,8 @@ pub fn install() -> Result<()> {
     let sid = current_user_sid()?;
     let cfg_dir = studyforge_core::paths::daemon_config_dir();
     std::fs::create_dir_all(&cfg_dir)?;
+    // Lock the directory down *before* writing allowed_users into it.
+    anyhow::ensure!(daemon::secure_state_dir(&cfg_dir, false), "could not restrict access to {}", cfg_dir.display());
     std::fs::write(cfg_dir.join("allowed_users"), format!("# written by `studyd install`\n{sid}\n"))?;
     let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)?;
     let info = ServiceInfo {
