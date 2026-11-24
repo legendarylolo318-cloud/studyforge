@@ -128,6 +128,19 @@ mod tests {
     }
 
     #[test]
+    fn bom_empty_lines_quotes_and_crlf_together() {
+        let bytes = b"\xef\xbb\xbf\"front, with comma\",\"back \"\"quoted\"\"\"\r\n\r\n\r\nq2,a2\r\n\n";
+        let text = decode(bytes).unwrap();
+        let rows = read_rows(&text, sniff_delimiter(&text)).unwrap();
+        let (cards, skipped) = map_rows(&rows, &CsvOptions::default());
+        assert_eq!(skipped, 0, "blank lines are not rows");
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].front, "front, with comma");
+        assert_eq!(cards[0].back, "back \"quoted\"");
+        assert_eq!(cards[1].front, "q2");
+    }
+
+    #[test]
     fn bom_and_size_limit() {
         let s = decode(&[0xEF, 0xBB, 0xBF, b'a', b',', b'b']).unwrap();
         assert_eq!(s, "a,b");
