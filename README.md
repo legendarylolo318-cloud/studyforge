@@ -161,3 +161,7 @@ cargo run -p studyd -- --sandbox /tmp/sf --dry-run run      # log what it would 
 cargo run -p studyforge --example screenshot -- /tmp/shots  # headless UI render of every page
 ```
 All system-modifying code paths honour `--dry-run`, and the tests only ever write to temp directories.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
