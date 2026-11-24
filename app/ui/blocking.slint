@@ -85,6 +85,45 @@ component ListEditor inherits Card {
     }
 }
 
+component AllowlistCard inherits Card {
+    VerticalLayout {
+        padding: 16px; spacing: 8px;
+        HorizontalLayout {
+            spacing: 10px;
+            Text { text: "Allowlist mode"; font-size: 16px; font-weight: 700; color: Theme.text; horizontal-stretch: 1; vertical-alignment: center; }
+            Switch { checked: AppState.settings.allowlist-mode; toggled => { AppState.set-bool("allowlist_mode", self.checked); } }
+        }
+        Dim { text: "Instead of blocking only what is listed, block everything except what you allow. Websites: all sites are blocked except the ones below. Programs: only programs from the lists you ticked (your 'distraction category') are closed, unless they are allowed below — other programs are never touched."; }
+        Text {
+            text: AppState.settings.browser-policies ? "Website allowlisting works through browser policies (enabled)." : "⚠ Website allowlisting REQUIRES browser policies, and they are switched off in Settings — websites will not be restricted.";
+            color: AppState.settings.browser-policies ? Theme.ok : Theme.danger; wrap: word-wrap; font-size: 12px;
+        }
+        HorizontalLayout {
+            spacing: 10px; height: 110px;
+            VerticalLayout {
+                horizontal-stretch: 1; spacing: 4px;
+                Dim { text: "Allowed websites (one per line)"; }
+                al-dom := TextEdit { wrap: word-wrap; font-size: 12px; edited(t) => { AppState.set-str("allowlist_domains", t); } }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1; spacing: 4px;
+                Dim { text: "Allowed programs (one per line)"; }
+                al-proc := TextEdit { wrap: word-wrap; font-size: 12px; edited(t) => { AppState.set-str("allowlist_processes", t); } }
+            }
+        }
+    }
+    init => { al-dom.text = AppState.settings.allowlist-domains; al-proc.text = AppState.settings.allowlist-processes; }
+}
+
+component PolicyNote inherits Card {
+    VerticalLayout {
+        padding: 16px; spacing: 6px;
+        Text { text: "How website blocking works"; font-size: 16px; font-weight: 700; color: Theme.text; }
+        Dim { text: "Layer 1 — hosts file: blocked domains are mapped to 0.0.0.0 and :: between StudyForge markers. Domains only: IP addresses are never blocked (CDNs share them)."; }
+        Dim { text: "Layer 2 — browser policies (Settings → Blocking, on by default): browsers that use DNS-over-HTTPS bypass the hosts file, so while a block is active StudyForge also sets URL-block policies and turns DoH off in Firefox, Chrome, Chromium, Edge and Brave. Firefox may need a restart to pick up policy changes. Portable browsers, Flatpak/Snap browsers, VPNs and a determined administrator can still get around blocks."; }
+    }
+}
+
 export component BlockingPage inherits ScrollView {
     VerticalLayout {
         spacing: 12px; padding-right: 10px;
@@ -112,6 +151,8 @@ export component BlockingPage inherits ScrollView {
             if AppState.edit-list-id >= 0: ListEditor { horizontal-stretch: 1; }
             if AppState.edit-list-id < 0: Card { horizontal-stretch: 1; Text { text: "Select a list to view or edit it"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; } }
         }
+        AllowlistCard { height: 330px; }
+        PolicyNote { height: 190px; }
         Rectangle { height: 16px; }
     }
 }

@@ -42,6 +42,11 @@ pub struct Settings {
     // blocking
     pub browser_policies: bool,
     pub block_steam_client: bool,
+    pub allowlist_mode: bool,
+    /// One domain per line.
+    pub allowlist_domains: String,
+    /// One process name per line.
+    pub allowlist_processes: String,
     pub hard_mode_cooldown_mins: u32,
     pub emergency_cooldown_mins: u32,
     pub early_exit_challenge: bool,
@@ -74,6 +79,9 @@ impl Default for Settings {
             dnd_during_work: false,
             browser_policies: true,
             block_steam_client: false,
+            allowlist_mode: false,
+            allowlist_domains: String::new(),
+            allowlist_processes: String::new(),
             hard_mode_cooldown_mins: 20,
             emergency_cooldown_mins: 60,
             early_exit_challenge: true,

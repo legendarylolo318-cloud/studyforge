@@ -153,6 +153,16 @@ export component SettingsPage inherits ScrollView {
                 Dim { text: AppState.hotkey-status; }
             }
         }
+        Section {
+            height: 250px;
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "Blocking"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                SwitchRow { label: "Browser policies (layer 2: stops DNS-over-HTTPS from bypassing the hosts file)"; key: "browser_policies"; value: AppState.settings.browser-policies; }
+                Dim { text: "Needed for website allowlisting. Firefox may need a restart to pick up policy changes."; }
+                SwitchRow { label: "Block the Steam client too (otherwise only Steam games are closed, never steam / steamwebhelper)"; key: "block_steam_client"; value: AppState.settings.block-steam-client; }
+            }
+        }
         Rectangle { height: 20px; }
     }
 }

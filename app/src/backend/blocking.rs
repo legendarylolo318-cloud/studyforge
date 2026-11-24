@@ -174,9 +174,14 @@ impl Backend {
     // ------------------------------------------------------------ spec
     pub(super) fn build_spec(&self, ids: &[Id]) -> BlockSpec {
         let lists: Vec<BlockList> = self.blocklists.iter().filter(|b| ids.contains(&b.id)).map(BlockList::from).collect();
+        let allowlist = studyforge_core::blocking::Allowlist {
+            enabled: self.settings.allowlist_mode,
+            domains: studyforge_core::presets::normalize_domains(parse_lines(&self.settings.allowlist_domains)),
+            processes: parse_lines(&self.settings.allowlist_processes).iter().map(|p| normalize_process(p)).collect(),
+        };
         BlockSpec {
             lists,
-            allowlist: Default::default(),
+            allowlist,
             block_steam_client: self.settings.block_steam_client,
             browser_policies: self.settings.browser_policies,
         }
@@ -185,7 +190,7 @@ impl Backend {
     // ------------------------------------------------------------ session hooks
     pub(super) fn begin_blocking(&mut self, goal: &str) {
         self.blocking_session = false;
-        if self.selected_lists.is_empty() {
+        if self.selected_lists.is_empty() && !self.settings.allowlist_mode {
             return;
         }
         if !self.daemon.connected {

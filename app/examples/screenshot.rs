@@ -40,7 +40,7 @@ fn demo(ui: &AppWindow) {
         flow_reminder_mins: 0, theme: 0, accent: 0, daily_goal_mins: 240, weekly_goal_mins: 1200, streak_min_mins: 25,
         day_start_hour: 4, new_cards_per_day: 20, master_volume: 0.8, sound_during_work: false, notify_sound: true,
         notifications: true, close_to_tray: true, autostart: false, hotkey: "Ctrl+Alt+S".into(), dnd_during_work: false,
-        browser_policies: true, block_steam_client: false, hard_mode_cooldown_mins: 20, emergency_cooldown_mins: 60,
+        browser_policies: true, block_steam_client: false, allowlist_mode: false, allowlist_domains: "wikipedia.org\nkhanacademy.org".into(), allowlist_processes: "".into(), hard_mode_cooldown_mins: 20, emergency_cooldown_mins: 60,
         early_exit_challenge: true, backup_daily: true,
     });
     st.set_hotkey_status("Hotkey active: Ctrl+Alt+S".into());
@@ -121,8 +121,22 @@ fn demo(ui: &AppWindow) {
     demo_blocking(&st);
 }
 
-#[allow(unused_variables)]
-fn demo_blocking(st: &AppState) {}
+fn demo_blocking(st: &AppState) {
+    let l = |id, name: &str, preset, d, p, mode, selected, steam, editing| ListItem { id, name: name.into(), preset, domains: d, processes: p, mode, selected, steam, editing };
+    st.set_blocklists(model(vec![
+        l(1, "Gaming", true, 98, 12, 0, true, true, false),
+        l(2, "News", true, 105, 0, 0, false, false, false),
+        l(3, "Social Media", true, 112, 7, 1, true, false, true),
+        l(4, "My distractions", false, 3, 1, 0, false, false, false),
+    ]));
+    st.set_edit_list_id(3);
+    st.set_edit_name("Social Media".into());
+    st.set_edit_domains("reddit.com\nwww.reddit.com\nx.com\ninstagram.com".into());
+    st.set_edit_processes("discord\ntelegram-desktop\nslack".into());
+    st.set_edit_mode(1);
+    st.set_edit_preset(true);
+    st.set_helper_install_note("Install: run `sudo ./packaging/linux/install.sh` from the StudyForge folder.".into());
+}
 
 fn main() {
     let out = std::env::args().nth(1).unwrap_or_else(|| "/tmp".into());
