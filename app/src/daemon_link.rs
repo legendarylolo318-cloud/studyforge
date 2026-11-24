@@ -81,8 +81,11 @@ impl DaemonLink {
 }
 
 fn run(endpoint: String, rx: Receiver<LinkMsg>, backend: Sender<Cmd>) {
+    let mut connected = false;
     loop {
-        match rx.recv_timeout(Duration::from_millis(1000)) {
+        // Poll every second while connected (overlay latency), back off when no helper is installed.
+        let wait = if connected { Duration::from_millis(1000) } else { Duration::from_secs(3) };
+        match rx.recv_timeout(wait) {
             Ok(LinkMsg::Shutdown) | Err(RecvTimeoutError::Disconnected) => return,
             Ok(LinkMsg::Request { req, tag }) => {
                 let result = request(&endpoint, &req).map_err(|e| e.to_string());
@@ -94,6 +97,7 @@ fn run(endpoint: String, rx: Receiver<LinkMsg>, backend: Sender<Cmd>) {
                 let status = request(&endpoint, &Request::Status);
                 match status {
                     Ok(Response::Status(s)) => {
+                        connected = true;
                         let _ = backend.send(Cmd::DaemonStatus(Ok(s)));
                         if let Ok(Response::Events { events }) = request(&endpoint, &Request::PollEvents) {
                             if !events.is_empty() {
@@ -106,6 +110,7 @@ fn run(endpoint: String, rx: Receiver<LinkMsg>, backend: Sender<Cmd>) {
                     }
                     Ok(_) => {}
                     Err(e) => {
+                        connected = false;
                         let _ = backend.send(Cmd::DaemonStatus(Err(e.to_string())));
                     }
                 }

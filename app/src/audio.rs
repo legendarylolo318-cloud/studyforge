@@ -131,7 +131,7 @@ impl NoiseChannel {
                 p.b5 = -0.7616 * p.b5 - white * 0.0168980;
                 let out = p.b0 + p.b1 + p.b2 + p.b3 + p.b4 + p.b5 + p.b6 + white * 0.5362;
                 p.b6 = white * 0.115926;
-                out * 0.11
+                (out * 0.11).clamp(-1.0, 1.0)
             }
             NoiseKind::Brown => {
                 // Leaky integrator of white noise.
@@ -272,13 +272,17 @@ fn engine(rx: Receiver<AudioCmd>, status: impl Fn(String)) {
 
     let sync = |slots: &mut HashMap<String, Slot>, master: f32, playing: bool| {
         let Some(sink) = &sink else { return };
+        // Headroom: the mixer sums tracks, so scale by 1/sqrt(n) to avoid clipping
+        // when several tracks are turned up at once.
+        let active = slots.values().filter(|s| playing && s.volume > 0.001).count().max(1);
+        let headroom = 1.0 / (active as f32).sqrt();
         for (id, slot) in slots.iter_mut() {
             let want = playing && slot.volume > 0.001;
             match (&slot.player, want) {
                 (None, true) => {
                     if let Some(src) = make_source(&slot.spec) {
                         let p = Player::connect_new(sink.mixer());
-                        p.set_volume(slot.volume * master);
+                        p.set_volume(slot.volume * master * headroom);
                         p.append(src);
                         slot.player = Some(p);
                     } else {
@@ -290,7 +294,7 @@ fn engine(rx: Receiver<AudioCmd>, status: impl Fn(String)) {
                         p.stop();
                     }
                 }
-                (Some(p), true) => p.set_volume(slot.volume * master),
+                (Some(p), true) => p.set_volume(slot.volume * master * headroom),
                 (None, false) => {}
             }
         }

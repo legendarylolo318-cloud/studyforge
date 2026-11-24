@@ -12,7 +12,7 @@ use crate::sys::dnd::{self, Dnd};
 use crate::sys::tray::{Tray, TrayState};
 use crate::OverlayWindow;
 use crate::{AppState, AppWindow, SettingsData, SubjectItem, TipItem, TrackItem};
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
+use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -112,6 +112,7 @@ pub struct Backend {
     shared: Shared,
     last_progress_save: Instant,
     last_tray: (TrayState, String),
+    last_timer_view: Option<TimerView>,
     hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
     audio: Audio,
     tracks: Vec<TrackInfo>,
@@ -230,6 +231,7 @@ impl Backend {
             shared,
             last_progress_save: Instant::now(),
             last_tray: (TrayState::Idle, String::new()),
+            last_timer_view: None,
             hotkey_rebind,
             audio: {
                 let w = ui_for_audio;
@@ -293,7 +295,9 @@ impl Backend {
 
     fn run(&mut self, rx: Receiver<Cmd>) {
         loop {
-            match rx.recv_timeout(Duration::from_millis(250)) {
+            // Wake 4x/s only while a timer is counting; otherwise once a second.
+            let wait = if self.timer.is_running() { Duration::from_millis(250) } else { Duration::from_secs(1) };
+            match rx.recv_timeout(wait) {
                 Ok(Cmd::Shutdown) => {
                     self.shutdown();
                     return;
@@ -833,6 +837,26 @@ impl Backend {
             }
         }
 
+        // Only touch the UI when something visible changed (progress quantized
+        // to 0.1 %, enough for a smooth ring without redrawing it 4x per second).
+        let snapshot = TimerView {
+            text: text.clone(),
+            label: label.clone(),
+            progress_milli: (progress * 1000.0).round() as u32,
+            active,
+            running,
+            awaiting,
+            is_break,
+            mode: mode_if_active,
+            info: info.clone(),
+            tip: tip.clone(),
+            goal: goal.clone(),
+        };
+        if self.last_timer_view.as_ref() == Some(&snapshot) {
+            return;
+        }
+        self.last_timer_view = Some(snapshot);
+        let progress = (progress * 1000.0).round() / 1000.0;
         let _ = self.ui.upgrade_in_event_loop(move |ui| {
             let st = ui.global::<AppState>();
             st.set_timer_text(text.into());
@@ -852,13 +876,21 @@ impl Backend {
     }
 }
 
-#[allow(dead_code)]
-pub fn subject_color_hex(c: slint::Color) -> String {
-    color_hex(c)
+/// What was last sent to the timer widgets (to skip redundant UI updates).
+#[derive(PartialEq)]
+pub struct TimerView {
+    text: String,
+    label: String,
+    progress_milli: u32,
+    active: bool,
+    running: bool,
+    awaiting: bool,
+    is_break: bool,
+    mode: Option<i32>,
+    info: String,
+    tip: String,
+    goal: String,
 }
-
-#[allow(dead_code)]
-fn _assert_model_trait<T: Model>() {}
 
 pub fn open_folder(p: &std::path::Path) {
     #[cfg(target_os = "windows")]
