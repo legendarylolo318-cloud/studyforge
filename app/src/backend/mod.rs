@@ -2,6 +2,7 @@
 //! directly. UI updates are pushed with `upgrade_in_event_loop`.
 
 use crate::audio::{self, Audio, AudioCmd, TrackInfo};
+mod cards;
 mod data;
 
 use crate::sys::tray::{Tray, TrayState};
@@ -16,6 +17,7 @@ use std::time::{Duration, Instant};
 use studyforge_core::db::Db;
 use studyforge_core::models::*;
 use studyforge_core::settings::{Settings, ThemeMode};
+use studyforge_core::srs::{Scheduler, Sm2};
 use studyforge_core::timer::{fmt_clock, Mode, Phase, Stamp, Timer, TimerConfig, TimerEvent};
 
 pub enum Cmd {
@@ -30,6 +32,21 @@ pub enum Cmd {
     AddTip(String),
     DeleteTip(i64),
     PageChanged(i32),
+    AddDeck { name: String, subject_idx: i32 },
+    DeleteDeck(i64),
+    StudyDeck(i64),
+    ShowAnswer,
+    RateCard(i32),
+    EndReview,
+    BrowseDeck(i64),
+    CloseBrowse,
+    AddCard { front: String, back: String },
+    DeleteCard(i64),
+    PickImport(i32),
+    ImportFileChosen { kind: i32, path: PathBuf },
+    CsvUpdate { front: i32, back: i32, tags: i32, header: bool },
+    ImportConfirm { deck_idx: i32, new_name: String },
+    ImportCancel,
     AddTodo { title: String, subject_idx: i32, due: String, prio: i32 },
     ToggleTodo(i64, bool),
     DeleteTodo(i64),
@@ -83,6 +100,11 @@ pub struct Backend {
     preview_dirty: Option<Instant>,
     last_refresh: Instant,
     block_status: String,
+    self_tx: Sender<Cmd>,
+    sched: Box<dyn Scheduler>,
+    review: Option<cards::ReviewSession>,
+    import: Option<cards::ImportDraft>,
+    browse: Option<Id>,
 }
 
 pub fn stamp() -> Stamp {
@@ -121,12 +143,13 @@ pub fn spawn(
     tray: Option<Tray>,
     shared: Shared,
     hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
+    self_tx: Sender<Cmd>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("backend".into())
         .spawn(move || match Db::open(&studyforge_core::paths::db_path(&data_dir)) {
             Ok(db) => {
-                let mut b = Backend::new(ui, db, tray, shared, hotkey_rebind, data_dir.clone());
+                let mut b = Backend::new(ui, db, tray, shared, hotkey_rebind, data_dir.clone(), self_tx);
                 b.run(rx);
             }
             Err(e) => {
@@ -146,6 +169,7 @@ impl Backend {
         shared: Shared,
         hotkey_rebind: Arc<dyn Fn(String) + Send + Sync>,
         data_dir: PathBuf,
+        self_tx: Sender<Cmd>,
     ) -> Self {
         let settings = db.load_settings().unwrap_or_default();
         if let Ok(n) = db.close_dangling_sessions() {
@@ -191,6 +215,11 @@ impl Backend {
             preview_dirty: None,
             last_refresh: Instant::now(),
             block_status: "Blocking helper not installed".into(),
+            self_tx,
+            sched: Box::new(Sm2),
+            review: None,
+            import: None,
+            browse: None,
         };
         let _ = std::fs::create_dir_all(&b.sounds_dir);
         b.mix = b.db.get_kv("sound_mix").ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
@@ -305,6 +334,21 @@ impl Backend {
                 self.page = p;
                 self.refresh_for_page();
             }
+            Cmd::AddDeck { name, subject_idx } => self.add_deck(name, subject_idx),
+            Cmd::DeleteDeck(id) => self.delete_deck(id),
+            Cmd::StudyDeck(id) => self.study_deck(id),
+            Cmd::ShowAnswer => self.show_answer(),
+            Cmd::RateCard(r) => self.rate_card(r),
+            Cmd::EndReview => self.end_review(),
+            Cmd::BrowseDeck(id) => self.browse_deck(id),
+            Cmd::CloseBrowse => self.close_browse(),
+            Cmd::AddCard { front, back } => self.add_card(front, back),
+            Cmd::DeleteCard(id) => self.delete_card(id),
+            Cmd::PickImport(k) => self.pick_import(k),
+            Cmd::ImportFileChosen { kind, path } => self.import_file_chosen(kind, path),
+            Cmd::CsvUpdate { front, back, tags, header } => self.csv_update(front, back, tags, header),
+            Cmd::ImportConfirm { deck_idx, new_name } => self.import_confirm(deck_idx, new_name),
+            Cmd::ImportCancel => self.import_cancel(),
             Cmd::AddTodo { title, subject_idx, due, prio } => self.add_todo(title, subject_idx, due, prio),
             Cmd::ToggleTodo(id, done) => {
                 let _ = self.db.set_todo_done(id, done);
@@ -691,6 +735,62 @@ pub fn wire_callbacks(ui: &AppWindow, tx: &Sender<Cmd>) {
         let _ = t.send(Cmd::PageChanged(p));
     });
     let st = ui.global::<AppState>();
+    let t = tx.clone();
+    st.on_add_deck(move |n, s| {
+        let _ = t.send(Cmd::AddDeck { name: n.to_string(), subject_idx: s });
+    });
+    let t = tx.clone();
+    st.on_delete_deck(move |id| {
+        let _ = t.send(Cmd::DeleteDeck(id as i64));
+    });
+    let t = tx.clone();
+    st.on_study_deck(move |id| {
+        let _ = t.send(Cmd::StudyDeck(id as i64));
+    });
+    let t = tx.clone();
+    st.on_show_answer(move || {
+        let _ = t.send(Cmd::ShowAnswer);
+    });
+    let t = tx.clone();
+    st.on_rate_card(move |r| {
+        let _ = t.send(Cmd::RateCard(r));
+    });
+    let t = tx.clone();
+    st.on_end_review(move || {
+        let _ = t.send(Cmd::EndReview);
+    });
+    let t = tx.clone();
+    st.on_browse_deck(move |id| {
+        let _ = t.send(Cmd::BrowseDeck(id as i64));
+    });
+    let t = tx.clone();
+    st.on_close_browse(move || {
+        let _ = t.send(Cmd::CloseBrowse);
+    });
+    let t = tx.clone();
+    st.on_add_card(move |f, b| {
+        let _ = t.send(Cmd::AddCard { front: f.to_string(), back: b.to_string() });
+    });
+    let t = tx.clone();
+    st.on_delete_card(move |id| {
+        let _ = t.send(Cmd::DeleteCard(id as i64));
+    });
+    let t = tx.clone();
+    st.on_pick_import(move |k| {
+        let _ = t.send(Cmd::PickImport(k));
+    });
+    let t = tx.clone();
+    st.on_csv_update(move |f, b, tg, h| {
+        let _ = t.send(Cmd::CsvUpdate { front: f, back: b, tags: tg, header: h });
+    });
+    let t = tx.clone();
+    st.on_import_confirm(move |i, n| {
+        let _ = t.send(Cmd::ImportConfirm { deck_idx: i, new_name: n.to_string() });
+    });
+    let t = tx.clone();
+    st.on_import_cancel(move || {
+        let _ = t.send(Cmd::ImportCancel);
+    });
     let t = tx.clone();
     st.on_add_todo(move |title, s, due, p| {
         let _ = t.send(Cmd::AddTodo { title: title.to_string(), subject_idx: s, due: due.to_string(), prio: p });

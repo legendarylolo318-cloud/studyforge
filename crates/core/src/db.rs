@@ -685,6 +685,34 @@ mod tests {
     }
 
     #[test]
+    fn review_queue_respects_new_limit_and_due_order() {
+        let db = Db::open_in_memory().unwrap();
+        let d = db.add_deck("D", None).unwrap();
+        for i in 0..5 {
+            db.add_card(d, &format!("q{i}"), "a", "").unwrap();
+        }
+        let q = db.review_queue(d, 100, 3).unwrap();
+        assert_eq!(q.len(), 3, "new cards limited");
+        // review one new card -> budget shrinks
+        let mut c = q[0].clone();
+        c.kind = CardKind::Review;
+        c.due_day = 105;
+        c.interval_days = 5;
+        db.record_review(&c, 3, true, 0, 100).unwrap();
+        let q = db.review_queue(d, 100, 3).unwrap();
+        assert_eq!(q.len(), 2, "1 of 3 new already introduced today");
+        // tomorrow the budget resets, the reviewed card is not yet due
+        let q = db.review_queue(d, 101, 3).unwrap();
+        assert_eq!(q.len(), 3);
+        // when due it shows up first
+        let q = db.review_queue(d, 105, 3).unwrap();
+        assert_eq!(q[0].id, c.id);
+        let sums = db.deck_summaries(105, 3).unwrap();
+        assert_eq!((sums[0].total, sums[0].due, sums[0].new_available), (5, 1, 3));
+        assert_eq!(db.total_due(105).unwrap(), 1);
+    }
+
+    #[test]
     fn backup_works() {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open(&dir.path().join("a.db")).unwrap();

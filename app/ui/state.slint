@@ -1,4 +1,4 @@
-import { SubjectItem, TipItem, SettingsData, TrackItem, TodoItem, NoteItem, MdBlock, BarItem, SessionRow, DistractionRow } from "structs.slint";
+import { SubjectItem, TipItem, SettingsData, TrackItem, TodoItem, NoteItem, MdBlock, BarItem, SessionRow, DistractionRow, DeckRow, CardRow, CsvRow } from "structs.slint";
 
 // Shared state between Rust and the screens. Rust owns the data; the UI only
 // reads properties and invokes callbacks.
@@ -83,6 +83,49 @@ export global AppState {
     callback edit-note(string, string, int);
     callback delete-note();
     callback search-notes(int, string);
+
+    // ----- flashcards -----
+    in-out property <[DeckRow]> decks;
+    in-out property <int> fc-mode: 0;            // 0 decks, 1 review, 2 browse
+    in-out property <string> fc-message;
+    in-out property <string> review-deck;
+    in-out property <string> review-front;
+    in-out property <string> review-back;
+    in-out property <bool> review-answer-shown: false;
+    in-out property <int> review-remaining: 0;
+    in-out property <[string]> review-labels: ["<1d", "1d", "1d", "4d"];
+    in-out property <bool> review-finished: false;
+    in-out property <string> review-summary;
+    in-out property <string> browse-deck-name;
+    in-out property <[CardRow]> browse-cards;
+    in-out property <bool> import-open: false;
+    in-out property <int> import-kind: 0;       // 0 csv, 1 apkg
+    in-out property <string> import-file;
+    in-out property <string> import-info;
+    in-out property <string> import-error;
+    in-out property <[string]> import-cols;
+    in-out property <[string]> import-tag-cols: ["(none)"];
+    in-out property <[CsvRow]> import-raw;
+    in-out property <[CsvRow]> import-preview;
+    in-out property <int> import-map-front: 0;
+    in-out property <int> import-map-back: 1;
+    in-out property <int> import-map-tags: 0;
+    in-out property <bool> import-header: false;
+    in-out property <[string]> import-deck-names: ["New deck…"];
+    callback add-deck(string, int);
+    callback delete-deck(int);
+    callback study-deck(int);
+    callback show-answer();
+    callback rate-card(int);
+    callback end-review();
+    callback browse-deck(int);
+    callback close-browse();
+    callback add-card(string, string);
+    callback delete-card(int);
+    callback pick-import(int);
+    callback csv-update(int, int, int, bool);
+    callback import-confirm(int, string);
+    callback import-cancel();
 
     // ----- stats -----
     in-out property <string> stats-today;

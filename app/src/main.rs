@@ -102,7 +102,7 @@ fn main() -> anyhow::Result<()> {
         ui.set_page(p);
         let _ = tx.send(Cmd::PageChanged(p));
     }
-    let handle = backend::spawn(ui.as_weak(), data_dir, rx, tray, shared, hotkey_rebind);
+    let handle = backend::spawn(ui.as_weak(), data_dir, rx, tray, shared, hotkey_rebind, tx.clone());
     ui.show()?;
     slint::run_event_loop_until_quit()?;
     let _ = tx.send(Cmd::Shutdown);

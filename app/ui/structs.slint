@@ -40,3 +40,7 @@ export struct MdBlock { kind: int, text: string, level: int, bold: bool, italic:
 export struct BarItem { label: string, value: float, text: string, color: color }
 export struct SessionRow { when: string, subject: string, goal: string, duration: string, outcome: string }
 export struct DistractionRow { when: string, target: string, list: string, action: string }
+
+export struct DeckRow { id: int, name: string, subject: string, total: int, due: int, new-count: int }
+export struct CardRow { id: int, front: string, back: string, status: string }
+export struct CsvRow { cols: [string] }

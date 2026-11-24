@@ -1,0 +1,206 @@
+import { ComboBox, LineEdit, CheckBox, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Card, Dim, PrimaryButton, GhostButton, Pill } from "components.slint";
+
+component DeckList inherits VerticalLayout {
+    spacing: 12px;
+    Card {
+        height: 64px;
+        HorizontalLayout {
+            padding: 14px; spacing: 8px;
+            deck-name := LineEdit { placeholder-text: "New deck name"; horizontal-stretch: 1; }
+            deck-subj := ComboBox { model: AppState.subject-names; width: 160px; }
+            PrimaryButton { text: "Create deck"; clicked => { if (deck-name.text != "") { AppState.add-deck(deck-name.text, deck-subj.current-index); deck-name.text = ""; } } }
+            GhostButton { text: "Import CSV…"; clicked => { AppState.pick-import(0); } }
+            GhostButton { text: "Import Anki .apkg…"; clicked => { AppState.pick-import(1); } }
+        }
+    }
+    if AppState.fc-message != "": Text { text: AppState.fc-message; color: Theme.ok; wrap: word-wrap; }
+    Card {
+        vertical-stretch: 1;
+        ScrollView {
+            VerticalLayout {
+                padding: 8px; spacing: 4px;
+                for d in AppState.decks : Rectangle {
+                    height: 56px; border-radius: 8px;
+                    background: ta.has-hover ? Theme.surface-hi : transparent;
+                    ta := TouchArea { }
+                    HorizontalLayout {
+                        padding: 8px; spacing: 10px;
+                        VerticalLayout {
+                            horizontal-stretch: 1; alignment: center;
+                            Text { text: d.name; color: Theme.text; font-weight: 700; overflow: elide; }
+                            Dim { text: d.total + " cards" + (d.subject != "" ? " · " + d.subject : ""); }
+                        }
+                        Pill { text: d.due + " due"; tint: d.due > 0 ? Theme.warn : Theme.text-dim; }
+                        Pill { text: d.new-count + " new"; tint: d.new-count > 0 ? Theme.accent : Theme.text-dim; }
+                        VerticalLayout { alignment: center; PrimaryButton { text: "Study"; height: 32px; enabled: d.due + d.new-count > 0; clicked => { AppState.study-deck(d.id); } } }
+                        VerticalLayout { alignment: center; GhostButton { text: "Cards"; clicked => { AppState.browse-deck(d.id); } } }
+                        VerticalLayout { alignment: center; GhostButton { text: "✕"; min-width: 30px; clicked => { AppState.delete-deck(d.id); } } }
+                    }
+                }
+                if AppState.decks.length == 0: Dim { text: "No decks yet. Create one or import from CSV / Anki."; horizontal-alignment: center; }
+            }
+        }
+    }
+}
+
+component ReviewView inherits Card {
+    FocusScope {
+        key-pressed(e) => {
+            if (AppState.review-finished) { return reject; }
+            if (e.text == " " && !AppState.review-answer-shown) { AppState.show-answer(); return accept; }
+            if (AppState.review-answer-shown) {
+                if (e.text == "1") { AppState.rate-card(1); return accept; }
+                if (e.text == "2") { AppState.rate-card(2); return accept; }
+                if (e.text == "3" || e.text == " ") { AppState.rate-card(3); return accept; }
+                if (e.text == "4") { AppState.rate-card(4); return accept; }
+            }
+            reject
+        }
+        init => { self.focus(); }
+        VerticalLayout {
+            padding: 20px; spacing: 12px;
+            HorizontalLayout {
+                Text { text: AppState.review-deck; color: Theme.text-dim; horizontal-stretch: 1; vertical-alignment: center; }
+                Text { text: AppState.review-remaining + " left"; color: Theme.text-dim; vertical-alignment: center; }
+                GhostButton { text: "End session"; clicked => { AppState.end-review(); } }
+            }
+            if AppState.review-finished: VerticalLayout {
+                vertical-stretch: 1; alignment: center; spacing: 10px;
+                Text { text: "🎉 All done!"; font-size: 28px; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
+                Text { text: AppState.review-summary; color: Theme.text-dim; horizontal-alignment: center; }
+                HorizontalLayout { alignment: center; PrimaryButton { text: "Back to decks"; clicked => { AppState.end-review(); } } }
+            }
+            if !AppState.review-finished: VerticalLayout {
+                vertical-stretch: 1; spacing: 12px;
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: center; spacing: 16px; padding: 12px;
+                        Text { text: AppState.review-front; font-size: 26px; color: Theme.text; wrap: word-wrap; horizontal-alignment: center; }
+                        if AppState.review-answer-shown: Rectangle { height: 1px; background: Theme.border; }
+                        if AppState.review-answer-shown: Text { text: AppState.review-back; font-size: 22px; color: Theme.accent; wrap: word-wrap; horizontal-alignment: center; }
+                    }
+                }
+                if !AppState.review-answer-shown: HorizontalLayout {
+                    alignment: center;
+                    PrimaryButton { text: "Show answer (Space)"; min-width: 220px; clicked => { AppState.show-answer(); } }
+                }
+                if AppState.review-answer-shown: HorizontalLayout {
+                    spacing: 10px; alignment: center;
+                    for name[i] in ["Again", "Hard", "Good", "Easy"] : Rectangle {
+                        width: 120px; height: 56px; border-radius: 8px;
+                        background: ta2.has-hover ? Theme.surface-hi : Theme.surface;
+                        border-width: 2px; border-color: [Theme.danger, Theme.warn, Theme.ok, Theme.accent][i];
+                        VerticalLayout {
+                            alignment: center;
+                            Text { text: name; color: Theme.text; font-weight: 700; horizontal-alignment: center; }
+                            Text { text: AppState.review-labels[i]; color: Theme.text-dim; font-size: 12px; horizontal-alignment: center; }
+                        }
+                        ta2 := TouchArea { clicked => { AppState.rate-card(i + 1); } mouse-cursor: pointer; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component BrowseView inherits VerticalLayout {
+    spacing: 12px;
+    HorizontalLayout {
+        spacing: 10px;
+        GhostButton { text: "← Decks"; clicked => { AppState.close-browse(); } }
+        Text { text: AppState.browse-deck-name; font-size: 18px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
+    }
+    Card {
+        height: 64px;
+        HorizontalLayout {
+            padding: 14px; spacing: 8px;
+            front := LineEdit { placeholder-text: "Front"; horizontal-stretch: 1; }
+            back := LineEdit { placeholder-text: "Back"; horizontal-stretch: 1; accepted => { add.clicked(); } }
+            add := PrimaryButton { text: "Add card"; clicked => { if (front.text != "" && back.text != "") { AppState.add-card(front.text, back.text); front.text = ""; back.text = ""; } } }
+        }
+    }
+    Card {
+        vertical-stretch: 1;
+        ScrollView {
+            VerticalLayout {
+                padding: 8px; spacing: 2px;
+                for c in AppState.browse-cards : HorizontalLayout {
+                    height: 34px; spacing: 10px;
+                    Text { text: c.front; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    Text { text: c.back; color: Theme.text-dim; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    Text { text: c.status; color: Theme.text-dim; font-size: 12px; vertical-alignment: center; width: 90px; }
+                    VerticalLayout { alignment: center; GhostButton { text: "✕"; min-width: 30px; height: 26px; clicked => { AppState.delete-card(c.id); } } }
+                }
+            }
+        }
+    }
+}
+
+component ImportDialog inherits Rectangle {
+    background: #000000a0;
+    TouchArea { }
+    Card {
+        width: min(parent.width - 60px, 820px); height: min(parent.height - 60px, 620px);
+        VerticalLayout {
+            padding: 18px; spacing: 10px;
+            Text { text: AppState.import-kind == 0 ? "Import CSV" : "Import Anki package"; font-size: 18px; font-weight: 700; color: Theme.text; }
+            Dim { text: AppState.import-file + " — " + AppState.import-info; }
+            if AppState.import-error != "": Text { text: AppState.import-error; color: Theme.danger; wrap: word-wrap; }
+            if AppState.import-kind == 0: VerticalLayout {
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Dim { text: "Front"; vertical-alignment: center; }
+                    fcb := ComboBox { model: AppState.import-cols; current-index: AppState.import-map-front; selected(v) => { AppState.csv-update(fcb.current-index, bcb.current-index, tcb.current-index, hdr.checked); } }
+                    Dim { text: "Back"; vertical-alignment: center; }
+                    bcb := ComboBox { model: AppState.import-cols; current-index: AppState.import-map-back; selected(v) => { AppState.csv-update(fcb.current-index, bcb.current-index, tcb.current-index, hdr.checked); } }
+                    Dim { text: "Tags"; vertical-alignment: center; }
+                    tcb := ComboBox { model: AppState.import-tag-cols; current-index: AppState.import-map-tags; selected(v) => { AppState.csv-update(fcb.current-index, bcb.current-index, tcb.current-index, hdr.checked); } }
+                    hdr := CheckBox { text: "First row is a header"; checked: AppState.import-header; toggled => { AppState.csv-update(fcb.current-index, bcb.current-index, tcb.current-index, hdr.checked); } }
+                }
+                Dim { text: "File preview (first rows)"; }
+                Rectangle {
+                    height: 110px; background: Theme.surface-hi; border-radius: 6px; clip: true;
+                    VerticalLayout {
+                        padding: 6px; spacing: 2px;
+                        for row in AppState.import-raw : HorizontalLayout {
+                            spacing: 6px; height: 18px;
+                            for cell in row.cols : Text { text: cell; width: 150px; overflow: elide; color: Theme.text; font-size: 12px; }
+                        }
+                    }
+                }
+            }
+            Dim { text: "Cards that will be imported (preview)"; }
+            Rectangle {
+                vertical-stretch: 1; background: Theme.surface-hi; border-radius: 6px; clip: true;
+                VerticalLayout {
+                    padding: 6px; spacing: 2px;
+                    for row in AppState.import-preview : HorizontalLayout {
+                        spacing: 10px; height: 20px;
+                        Text { text: row.cols[0]; horizontal-stretch: 1; overflow: elide; color: Theme.text; font-size: 12px; }
+                        Text { text: row.cols[1]; horizontal-stretch: 1; overflow: elide; color: Theme.text-dim; font-size: 12px; }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Dim { text: "Import into"; vertical-alignment: center; }
+                dsel := ComboBox { model: AppState.import-deck-names; current-index: 0; }
+                nn := LineEdit { placeholder-text: "New deck name"; enabled: dsel.current-index == 0; text: AppState.import-file; horizontal-stretch: 1; }
+                GhostButton { text: "Cancel"; clicked => { AppState.import-cancel(); } }
+                PrimaryButton { text: "Import"; clicked => { AppState.import-confirm(dsel.current-index, nn.text); } }
+            }
+        }
+    }
+}
+
+export component FlashcardsPage inherits Rectangle {
+    if AppState.fc-mode == 0: DeckList { }
+    if AppState.fc-mode == 1: ReviewView { }
+    if AppState.fc-mode == 2: BrowseView { }
+    if AppState.import-open: ImportDialog { }
+}

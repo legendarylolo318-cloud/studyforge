@@ -8,6 +8,7 @@ import { DashboardPage } from "dashboard.slint";
 import { TasksPage } from "tasks.slint";
 import { NotesPage } from "notes.slint";
 import { StatsPage } from "stats.slint";
+import { FlashcardsPage } from "flashcards.slint";
 export { Theme, AppState }
 
 export component AppWindow inherits Window {
@@ -58,11 +59,12 @@ export component AppWindow inherits Window {
                     vertical-stretch: 1;
                     if root.page == 0: DashboardPage { }
                     if root.page == 1: FocusPage { }
+                    if root.page == 2: FlashcardsPage { }
                     if root.page == 3: NotesPage { }
                     if root.page == 4: TasksPage { }
                     if root.page == 6: StatsPage { }
                     if root.page == 7: SettingsPage { }
-                    if root.page == 2 || root.page == 5: Card {
+                    if root.page == 5: Card {
                         Text { text: "Coming soon"; color: Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; }
                     }
                 }

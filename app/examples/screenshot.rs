@@ -105,6 +105,19 @@ fn demo(ui: &AppWindow) {
     st.set_stats_app_bars(model(vec![bar("discord", 1.0, "12", c(239, 111, 108)), bar("reddit.com", 0.4, "5", c(239, 111, 108))]));
     st.set_stats_sessions(model(vec![SessionRow { when: "Nov 24 13:10".into(), subject: "Mathematics".into(), goal: "Finish integration exercises".into(), duration: "50m".into(), outcome: "Done".into() }]));
     st.set_stats_distractions(model(vec![DistractionRow { when: "Nov 24 13:44".into(), target: "discord".into(), list: "Social Media".into(), action: "killed".into() }]));
+    st.set_decks(model(vec![
+        DeckRow { id: 1, name: "Cell biology".into(), subject: "Biology".into(), total: 120, due: 14, new_count: 20 },
+        DeckRow { id: 2, name: "Spanish verbs".into(), subject: "".into(), total: 60, due: 0, new_count: 0 },
+    ]));
+    st.set_review_deck("Cell biology".into());
+    st.set_review_front("What organelle produces most of the cell's ATP?".into());
+    st.set_review_back("The mitochondrion".into());
+    st.set_review_answer_shown(true);
+    st.set_review_remaining(13);
+    st.set_review_labels(model(vec!["<1d".into(), "6d".into(), "15d".into(), "20d".into()]));
+    if std::env::var("FC_REVIEW").is_ok() {
+        st.set_fc_mode(1);
+    }
     demo_blocking(&st);
 }
 

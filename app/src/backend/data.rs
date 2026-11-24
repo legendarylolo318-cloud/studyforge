@@ -398,6 +398,7 @@ impl Backend {
     pub(super) fn refresh_for_page(&mut self) {
         match self.page {
             0 => self.push_dashboard(),
+            2 => self.push_decks(),
             3 => {
                 self.push_notes();
             }

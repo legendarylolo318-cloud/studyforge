@@ -29,7 +29,10 @@ export component PrimaryButton inherits Rectangle {
     height: 36px;
     border-radius: 8px;
     background: !enabled ? Theme.surface-hi : danger ? Theme.danger : (ta.has-hover ? Theme.accent.brighter(0.15) : Theme.accent);
-    Text { text: root.text; color: root.enabled ? Theme.on-accent : Theme.text-dim; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+    HorizontalLayout {
+        padding-left: 14px; padding-right: 14px;
+        Text { text: root.text; color: root.enabled ? Theme.on-accent : Theme.text-dim; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+    }
     ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } mouse-cursor: pointer; }
 }
 
@@ -44,7 +47,10 @@ export component GhostButton inherits Rectangle {
     border-width: 1px;
     border-color: selected ? Theme.accent : Theme.border;
     background: selected ? Theme.accent.with-alpha(0.18) : (ta.has-hover ? Theme.surface-hi : transparent);
-    Text { text: root.text; color: root.enabled ? (root.selected ? Theme.accent : Theme.text) : Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; font-size: 13px; }
+    HorizontalLayout {
+        padding-left: 12px; padding-right: 12px;
+        Text { text: root.text; color: root.enabled ? (root.selected ? Theme.accent : Theme.text) : Theme.text-dim; horizontal-alignment: center; vertical-alignment: center; font-size: 13px; }
+    }
     ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } mouse-cursor: pointer; }
 }
 
