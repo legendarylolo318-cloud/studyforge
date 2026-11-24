@@ -571,3 +571,97 @@ fn force_clear_removes_everything() {
     assert!(r.engine.state.active.is_none());
     assert!(!r.sites.0.lock().unwrap().on);
 }
+
+// ---------------------------------------------------------------- clock changes
+fn boot(secs: u64) -> Option<std::time::Duration> {
+    Some(std::time::Duration::from_secs(secs))
+}
+
+#[test]
+fn clock_set_backwards_does_not_extend_the_lock() {
+    let mut r = rig();
+    r.engine.handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 3600, true, 20, 60))), at(0));
+    r.engine.tick_with_clock(at(0), boot(1000));
+    r.engine.tick_with_clock(at(600), boot(1600)); // normal: 10 min passed
+                                                   // user sets the clock back by a full day
+    r.engine.tick_with_clock(at(602 - 86400), boot(1602));
+    let deadline = r.engine.state.active.as_ref().unwrap().hard.as_ref().unwrap().deadline;
+    assert_eq!(deadline, T0 + 3600 - 86400, "deadline moved with the clock: remaining time unchanged");
+    // 50 minutes of real time later the lock ends as planned
+    r.engine.tick_with_clock(at(602 - 86400 + 2998), boot(1602 + 2998));
+    assert!(r.engine.state.active.is_none());
+}
+
+#[test]
+fn clock_set_forwards_does_not_end_the_lock_instantly() {
+    let mut r = rig();
+    r.engine.handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 3600, true, 20, 60))), at(0));
+    r.engine.tick_with_clock(at(0), boot(1000));
+    r.engine.tick_with_clock(at(2 + 7 * 86400), boot(1002)); // jumped a week ahead
+    assert!(r.engine.state.active.is_some(), "still locked");
+    let a = r.engine.state.active.as_ref().unwrap();
+    assert_eq!(a.hard.as_ref().unwrap().deadline - (T0 + 2 + 7 * 86400), 3598);
+}
+
+#[test]
+fn suspend_counts_as_real_time() {
+    let mut r = rig();
+    r.engine.handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 3600, true, 20, 60))), at(0));
+    r.engine.tick_with_clock(at(0), boot(1000));
+    // laptop slept 2 hours: wall and boot clocks both advanced
+    r.engine.tick_with_clock(at(7200), boot(8200));
+    assert!(r.engine.state.active.is_none(), "the lock ended while asleep");
+}
+
+#[test]
+fn cooldowns_shift_with_the_clock_too() {
+    let mut r = rig();
+    r.engine
+        .handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 20 * 3600, false, 20, 60))), at(0));
+    r.engine.tick_with_clock(at(0), boot(0));
+    r.engine.handle(Request::Emergency { start: true }, at(10));
+    r.engine.tick_with_clock(at(12 + 10_000), boot(12)); // clock forward ~2.8 h
+    assert!(r.engine.state.active.is_some(), "a clock jump must not complete the emergency cooldown");
+    r.engine.tick_with_clock(at(12 + 10_000 + 3600), boot(12 + 3600));
+    assert!(r.engine.state.active.is_none(), "but real elapsed time does");
+}
+
+#[test]
+fn clock_moved_back_while_daemon_was_down() {
+    let r = rig();
+    let dir = r.dir;
+    let mut e = r.engine;
+    e.handle(start("g", spec(EnforceMode::Hard), Some(HardModeConfig::new(T0 + 3600, true, 20, 60))), at(0));
+    e.tick_with_clock(at(1200), boot(1200)); // last seen at T0+1200 (persisted)
+    drop(e);
+    let mut r2 = rig_in(dir);
+    r2.engine.reconcile_on_start(at(1200 - 30 * 86400)); // RTC reset a month back
+    let h = r2.engine.state.active.as_ref().unwrap().hard.clone().unwrap();
+    assert_eq!(h.deadline - (T0 + 1200 - 30 * 86400), 2400, "remaining time preserved, not a month extra");
+}
+
+#[test]
+fn lock_is_never_longer_than_the_maximum_after_restart() {
+    let r = rig();
+    let dir = r.dir;
+    // hand-craft a persisted state with an absurd deadline (corrupt/edited file)
+    let mut st = crate::state::Persisted::default();
+    st.active = Some(crate::state::ActiveSession {
+        goal: "x".into(),
+        started_at: T0,
+        spec: spec(EnforceMode::Hard),
+        hard: Some(HardModeConfig {
+            deadline: T0 + 400 * 86400,
+            early_exit_challenge: false,
+            exit_cooldown_mins: 20,
+            emergency_cooldown_mins: 60,
+        }),
+        hard_state: Default::default(),
+        last_contact: T0,
+    });
+    st.save(&dir.path().join("state.json")).unwrap();
+    drop(r.engine);
+    let mut r2 = rig_in(dir);
+    r2.engine.reconcile_on_start(at(0));
+    assert_eq!(r2.engine.state.active.as_ref().unwrap().hard.as_ref().unwrap().deadline, T0 + MAX_HARD_SECS);
+}

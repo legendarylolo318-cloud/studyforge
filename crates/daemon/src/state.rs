@@ -29,6 +29,10 @@ pub struct Persisted {
     pub schedules: Vec<ScheduleRule>,
     pub events: Vec<DaemonEvent>,
     pub next_id: u64,
+    /// Wall-clock time (unix s) at which studyd last ran; detects the clock
+    /// going backwards across a restart.
+    #[serde(default)]
+    pub last_seen: i64,
 }
 
 impl Persisted {

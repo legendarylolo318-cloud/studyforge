@@ -187,7 +187,7 @@ pub fn run_daemon(opts: &Options, stop: Arc<AtomicBool>) -> Result<()> {
             e.cfg.allowed_owners = fresh.clone();
             *users.lock().unwrap() = fresh;
         }
-        e.tick(Utc::now());
+        e.tick_with_clock(Utc::now(), Some(crate::engine::boot_clock()));
     }
     tracing::info!("studyd stopping (blocks stay in place if a hard-mode lock is active)");
     let _ = server.join();

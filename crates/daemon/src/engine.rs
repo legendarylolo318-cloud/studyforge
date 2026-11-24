@@ -24,6 +24,38 @@ pub const GUI_ALIVE_SECS: i64 = 10;
 pub const SNOOZE_SECS: i64 = 300;
 /// Re-announce an unanswered overlay after this long.
 pub const OVERLAY_REPEAT_SECS: i64 = 120;
+/// A disagreement between the wall clock and the boot clock larger than this
+/// is treated as the system clock being changed.
+pub const CLOCK_JUMP_SECS: i64 = 90;
+/// How often the "last seen" wall time is persisted (for clock changes while
+/// the daemon is not running).
+pub const LAST_SEEN_SAVE_SECS: i64 = 60;
+
+/// Seconds since boot, *including* time spent suspended. Used to tell a real
+/// clock change (shift the deadline) from time actually passing (keep it).
+pub fn boot_clock() -> std::time::Duration {
+    #[cfg(target_os = "linux")]
+    {
+        let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        // SAFETY: valid pointer to a timespec; CLOCK_BOOTTIME exists on every supported kernel.
+        if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut t) } == 0 {
+            return std::time::Duration::new(t.tv_sec as u64, t.tv_nsec as u32);
+        }
+    }
+    #[cfg(windows)]
+    {
+        // GetTickCount64 keeps counting while the machine sleeps.
+        // SAFETY: no arguments, cannot fail.
+        return std::time::Duration::from_millis(unsafe {
+            windows_sys::Win32::System::SystemInformation::GetTickCount64()
+        });
+    }
+    #[allow(unreachable_code)]
+    {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        START.get_or_init(std::time::Instant::now).elapsed()
+    }
+}
 
 pub trait Notifier {
     fn notify(&self, summary: &str, body: &str);
@@ -68,6 +100,8 @@ pub struct Engine<S: SiteBlocker, A: AppBlocker, N: Notifier> {
     gentle: HashMap<u32, GentleEntry>,
     killed_logged: HashSet<(u32, u64)>,
     commons_cache: (i64, Vec<PathBuf>),
+    /// (wall seconds, boot clock) at the previous tick.
+    clock_ref: Option<(i64, std::time::Duration)>,
 }
 
 impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
@@ -96,6 +130,7 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
             gentle: HashMap::new(),
             killed_logged: HashSet::new(),
             commons_cache: (0, vec![]),
+            clock_ref: None,
         }
     }
 
@@ -130,6 +165,17 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
         if let Some(a) = &mut self.state.active {
             a.last_contact = ts;
         }
+        // The clock went backwards while we were not running (e.g. RTC reset,
+        // manual change before reboot): keep the remaining time instead of
+        // extending the lock by the jump. A forward jump cannot be told apart
+        // from time really passing, so it is honoured.
+        let seen = self.state.last_seen;
+        if seen > 0 && ts < seen - CLOCK_JUMP_SECS {
+            self.shift_times(ts - seen);
+            self.notice(ts, "System clock is earlier than when studyd last ran: hard-mode times adjusted");
+        }
+        self.clamp_lock(ts);
+        self.state.last_seen = ts;
         self.check_emergency_flag(ts);
         self.expire_session(ts);
         let report = self.sites.clear(); // always clean first
@@ -143,11 +189,60 @@ impl<S: SiteBlocker, A: AppBlocker, N: Notifier> Engine<S, A, N> {
     // periodic work (call about every 2 seconds)
     // ------------------------------------------------------------------
     pub fn tick(&mut self, now: DateTime<Utc>) {
+        self.tick_with_clock(now, None);
+    }
+
+    /// `boot` = [`boot_clock`] reading (None disables clock-change detection).
+    pub fn tick_with_clock(&mut self, now: DateTime<Utc>, boot: Option<std::time::Duration>) {
         let ts = now.timestamp();
+        if let Some(b) = boot {
+            self.detect_clock_change(ts, b);
+        }
+        if ts - self.state.last_seen >= LAST_SEEN_SAVE_SECS || ts < self.state.last_seen {
+            self.state.last_seen = ts;
+            self.save();
+        }
         self.check_emergency_flag(ts);
         self.expire_session(ts);
         self.apply_desired(now, false);
         self.enforce_apps(ts);
+    }
+
+    fn detect_clock_change(&mut self, ts: i64, boot: std::time::Duration) {
+        if let Some((w0, b0)) = self.clock_ref {
+            let elapsed = boot.saturating_sub(b0).as_secs() as i64;
+            let drift = (ts - w0) - elapsed;
+            if drift.abs() > CLOCK_JUMP_SECS {
+                self.shift_times(drift);
+                self.clamp_lock(ts);
+                self.notice(ts, format!("System clock changed by {drift} s: hard-mode deadline adjusted so the remaining time stays the same"));
+                self.save();
+            }
+        }
+        self.clock_ref = Some((ts, boot));
+    }
+
+    /// Move every absolute timestamp of the session by `delta` seconds.
+    fn shift_times(&mut self, delta: i64) {
+        if let Some(a) = &mut self.state.active {
+            a.started_at += delta;
+            a.last_contact += delta;
+            if let Some(h) = &mut a.hard {
+                h.deadline += delta;
+            }
+            for t in
+                [&mut a.hard_state.exit_requested_at, &mut a.hard_state.emergency_requested_at].into_iter().flatten()
+            {
+                *t += delta;
+            }
+        }
+    }
+
+    /// Never more than `MAX_HARD_SECS` of lock left, whatever happened to the clock.
+    fn clamp_lock(&mut self, ts: i64) {
+        if let Some(h) = self.state.active.as_mut().and_then(|a| a.hard.as_mut()) {
+            h.deadline = h.deadline.min(ts + MAX_HARD_SECS);
+        }
     }
 
     fn check_emergency_flag(&mut self, ts: i64) {

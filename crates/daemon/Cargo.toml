@@ -30,8 +30,8 @@ libc = "0.2.191"
 [target."cfg(windows)".dependencies]
 widestring = "1.2.1"
 windows-service = "0.8.1"
+windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
 
 [dev-dependencies]
 chrono-tz = "0.10.4"
-libc = "0.2.191"
 tempfile = "3.27.0"

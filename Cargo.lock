@@ -5708,6 +5708,7 @@ dependencies = [
  "tracing-subscriber",
  "widestring",
  "windows-service",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
