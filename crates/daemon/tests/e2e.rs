@@ -30,7 +30,16 @@ fn spawn_victim(dir: &Path, name: &str) -> Child {
     let sleep = String::from_utf8(Command::new("which").arg("sleep").output().unwrap().stdout).unwrap();
     let victim: PathBuf = dir.join(name);
     std::fs::copy(sleep.trim(), &victim).unwrap();
-    Command::new(&victim).arg("300").spawn().unwrap()
+    // Executing a binary that was just written can fail with ETXTBSY ("Text file busy") when a
+    // parallel test's fork() still holds the write fd for a moment: retry briefly.
+    for _ in 0..50 {
+        match Command::new(&victim).arg("300").spawn() {
+            Ok(c) => return c,
+            Err(e) if e.raw_os_error() == Some(26) => std::thread::sleep(Duration::from_millis(100)),
+            Err(e) => panic!("cannot start victim: {e}"),
+        }
+    }
+    panic!("victim binary stayed busy");
 }
 
 fn spec(victim: &str) -> BlockSpec {

@@ -255,9 +255,14 @@ mod tests {
         let roots = linux_roots(std::slice::from_ref(&home));
         assert_eq!(roots.len(), 2);
         let commons = common_dirs(&roots);
-        assert!(commons.contains(&root.join("steamapps/common")));
-        assert!(commons.contains(&extra.join("steamapps/common")));
-        assert!(commons.contains(&fp.join("steamapps/common")));
+        // linux_roots canonicalizes (on Windows that adds a `\\?\` prefix), so compare
+        // against canonical paths built with the platform's own separators.
+        let common_of = |p: &std::path::Path| {
+            std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).join("steamapps").join("common")
+        };
+        assert!(commons.contains(&common_of(&root)));
+        assert!(commons.contains(&common_of(&fp)));
+        assert!(commons.iter().any(|c| c.ends_with("lib2/steamapps/common") || c.ends_with(r"lib2\steamapps\common")));
         // proton binaries live under steamapps/common too
         let proton = root.join("steamapps/common/Proton - Experimental/files/bin/wine64-preloader");
         assert!(is_under_common(&proton, &commons));
