@@ -27,13 +27,25 @@ fn wait_for(what: &str, secs: u64, mut f: impl FnMut() -> bool) {
 }
 
 fn spawn_victim(dir: &Path, name: &str) -> Child {
-    let sleep = String::from_utf8(Command::new("which").arg("sleep").output().unwrap().stdout).unwrap();
+    // A real (non-shell, non-multicall) binary that just sleeps, compiled with the same rustc that
+    // builds the tests. Scripts and renamed coreutils do not work: sysinfo names a script after its
+    // interpreter, multi-call binaries exit when renamed, and studyd rightly refuses to touch shells.
     let victim: PathBuf = dir.join(name);
-    std::fs::copy(sleep.trim(), &victim).unwrap();
-    // Executing a binary that was just written can fail with ETXTBSY ("Text file busy") when a
+    let src = dir.join("victim.rs");
+    std::fs::write(&src, "fn main() { std::thread::sleep(std::time::Duration::from_secs(300)); }").unwrap();
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
+    let st = Command::new(rustc)
+        .arg("--edition=2021")
+        .arg("-o")
+        .arg(&victim)
+        .arg(&src)
+        .status()
+        .expect("rustc must be available to compile the test victim");
+    assert!(st.success(), "compiling the test victim failed");
+    // Executing a file that was just written can fail with ETXTBSY ("Text file busy") when a
     // parallel test's fork() still holds the write fd for a moment: retry briefly.
     for _ in 0..50 {
-        match Command::new(&victim).arg("300").spawn() {
+        match Command::new(&victim).spawn() {
             Ok(c) => return c,
             Err(e) if e.raw_os_error() == Some(26) => std::thread::sleep(Duration::from_millis(100)),
             Err(e) => panic!("cannot start victim: {e}"),
@@ -79,6 +91,8 @@ fn full_session_lifecycle_in_sandbox() {
 
     // ---- soft session: hosts + policies + process kill ----
     let mut victim = spawn_victim(&sb, "e2evictimproc");
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(victim.try_wait().unwrap().is_none(), "test victim must be running before the session starts");
     let r = request(
         &l.endpoint,
         &Request::StartSession(StartSession { goal: "e2e".into(), spec: spec("e2evictimproc"), hard: None }),
