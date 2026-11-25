@@ -164,4 +164,6 @@ All system-modifying code paths honour `--dry-run`, and the tests only ever writ
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The UI is built with [Slint](https://slint.dev), used under the Slint Royalty-Free Desktop license; Symphonia (audio decoding) is MPL-2.0.

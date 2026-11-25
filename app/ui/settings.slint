@@ -1,4 +1,4 @@
-import { SpinBox, Switch, LineEdit, Slider, ScrollView } from "std-widgets.slint";
+import { SpinBox, Switch, LineEdit, Slider, ScrollView, AboutSlint } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
 import { Card, Dim, PrimaryButton, GhostButton } from "components.slint";
@@ -199,6 +199,14 @@ export component SettingsPage inherits ScrollView {
                 }
                 Dim { text: "Point this at a Syncthing / Dropbox folder to share your data between computers. A lock file stops two computers opening the database at the same time. This is not a merge: use one computer at a time. Takes effect after a restart."; }
                 if AppState.data-note != "": Text { text: AppState.data-note; color: Theme.ok; wrap: word-wrap; font-size: 12px; }
+            }
+        }
+        Section {
+            VerticalLayout {
+                padding: 16px; spacing: 8px;
+                Text { text: "About"; font-weight: 700; font-size: 16px; color: Theme.text; }
+                Dim { text: "StudyForge is open source (MIT). The user interface is built with Slint, used under the Slint Royalty-Free Desktop license."; }
+                AboutSlint { height: 90px; }
             }
         }
         Rectangle { height: 20px; }

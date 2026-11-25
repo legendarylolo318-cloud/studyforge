@@ -1,0 +1,16 @@
+StudyForge - third-party notices
+
+User interface: Slint (https://slint.dev), used under the Slint Royalty-Free
+Desktop, Mobile and Web Applications License 2.0
+(https://slint.dev/terms-and-conditions#royalty-free). StudyForge acknowledges
+the use of Slint in its Settings > About page and in this file.
+
+Audio decoding: Symphonia (MPL-2.0, https://github.com/pdeljanov/Symphonia),
+used unmodified as a library.
+
+All other dependencies are permissively licensed (MIT / Apache-2.0 / BSD /
+similar); run `cargo metadata` or `cargo tree` for the full list. Their licenses
+require preserving their copyright notices, which are kept in the crate sources
+fetched by Cargo.
+
+StudyForge itself: MIT, see LICENSE.
